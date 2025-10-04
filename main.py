@@ -775,12 +775,6 @@ class TelegramSenderApp:
 # ЗАПУСК ПРИЛОЖЕНИЯ
 # ============================================
 if __name__ == "__main__":
-    if sys.platform == 'win32':
-        try:
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        except AttributeError:
-            pass
-
     root = tk.Tk()
-    app = ThemedTelegramSenderApp(root)
+    app = TelegramSenderApp(root)
     root.mainloop()
