@@ -1,27 +1,140 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
-from telethon import TelegramClient
-from telethon.errors.rpcerrorlist import SessionPasswordNeededError
 import asyncio
-import threading
 import json
 import os
-import sys
-from typing import Optional, List, Dict, Any
+import threading
+import tkinter as tk
+from tkinter import ttk, scrolledtext, messagebox, simpledialog
 
+from telethon import TelegramClient
 
 # ============================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ИСПРАВЛЕНО ДЛЯ СОХРАНЕНИЯ ДАННЫХ)
+# КОНФИГУРАЦИЯ
 # ============================================
-def get_persistent_path(filename: str) -> str:
-    """
-    Получает путь для пользовательских данных (конфигурации, сессий, контактов).
-    Всегда использует текущую рабочую директорию, чтобы обеспечить сохранение
-    файлов даже после закрытия скомпилированного приложения.
-    """
-    # Мы используем os.path.abspath(".") (текущий рабочий каталог),
-    # чтобы избежать проблем с временными папками вроде sys._MEIPASS.
-    return os.path.join(os.path.abspath("."), filename)
+USER_CONFIG = "config.json"
+GROUPS_FILE = "groups.json"
+client = None
+
+
+def load_config():
+    """Загрузить данные"""
+    if os.path.exists(USER_CONFIG):
+        try:
+            with open(USER_CONFIG, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {"api_id": "", "api_hash": "", "phone": ""}
+
+
+def save_config(api_id, api_hash, phone):
+    """Сохранить настройки"""
+    config = {"api_id": api_id, "api_hash": api_hash, "phone": phone}
+    with open(USER_CONFIG, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+def load_groups_data():
+    """Загрузить список групп и тем"""
+    if os.path.exists(GROUPS_FILE):
+        try:
+            with open(GROUPS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get("groups", []), data.get("themes", [])
+        except:
+            pass
+    return [], []
+
+
+def save_groups_data(groups, themes):
+    """Сохранить список групп и тем"""
+    data = {"groups": groups, "themes": themes}
+    with open(GROUPS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+async def init_client(app, api_id, api_hash, phone):
+    global client
+
+    session_name = f"session_{phone.strip().replace('+', '')}"
+    client = TelegramClient(session_name, api_id, api_hash)
+
+    await client.connect()
+
+    if not await client.is_user_authorized():
+        await client.send_code_request(phone)
+
+        code = app.get_input_from_dialog(
+            "Код подтверждения",
+            "Введите код из SMS/Telegram:"
+        )
+
+        if not code:
+            raise Exception("Код не введен")
+
+        try:
+            await client.sign_in(phone, code)
+        except Exception as e:
+            if "password" in str(e).lower() or "SessionPasswordNeededError" in str(type(e).__name__):
+                # ИЗМЕНЕНИЕ: Используем новый потокобезопасный метод для запроса пароля.
+                password = app.get_input_from_dialog(
+                    "Двухфакторная авторизация",
+                    "Введите пароль 2FA:",
+                    show='*'
+                )
+
+                if not password:
+                    raise Exception("Пароль 2FA не введен")
+
+                await client.sign_in(password=password)
+            else:
+                raise e
+
+    return client
+
+
+async def get_user_groups():
+    """Получить все группы пользователя"""
+    groups = []
+    async for dialog in client.iter_dialogs():
+        if dialog.is_group or dialog.is_channel:
+            groups.append({
+                "id": dialog.id,
+                "name": dialog.title,
+                "username": dialog.entity.username if hasattr(dialog.entity, 'username') else ""
+            })
+    return groups
+
+
+async def send_messages(selected_groups, selected_themes, message_text, log_callback):
+    """Отправка сообщений в выбранные группы и темы"""
+    success = 0
+    failed = 0
+
+    for group in selected_groups:
+        try:
+            await client.send_message(group["id"], message_text)
+            log_callback(f"✓ Отправлено: {group['name']} (каб. {group.get('cabinet', 'N/A')})")
+            success += 1
+            await asyncio.sleep(10)
+        except Exception as e:
+            log_callback(f"✗ Ошибка {group['name']}: {str(e)}")
+            failed += 1
+
+    for theme in selected_themes:
+        try:
+            await client.send_message(
+                entity=theme["group_id"],
+                message=message_text,
+                reply_to=theme["topic_id"]
+            )
+            log_callback(f"✓ Отправлено: {theme['name']} (каб. {theme.get('cabinet', 'N/A')})")
+            success += 1
+            await asyncio.sleep(10)
+        except Exception as e:
+            log_callback(f"✗ Ошибка {theme['name']}: {str(e)}")
+            failed += 1
+
+    return success, failed
 
 
 # ============================================
