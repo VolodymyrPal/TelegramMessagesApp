@@ -6,6 +6,25 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, simpledialog
 
 from telethon import TelegramClient
+from telethon.tl.functions.channels import GetForumTopicsRequest
+from telethon.errors import ChannelPrivateError, ChatAdminRequiredError
+
+# ============================================
+# ЛОГИРОВАНИЕ
+# ============================================
+import logging
+from logging.handlers import RotatingFileHandler
+
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_PATH = os.path.join(LOG_DIR, "app.log")
+
+_logger = logging.getLogger("app")
+_logger.setLevel(logging.INFO)
+_handler = RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+if not _logger.handlers:
+    _logger.addHandler(_handler)
 
 # ============================================
 # КОНФИГУРАЦИЯ
