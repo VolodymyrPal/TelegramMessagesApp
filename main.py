@@ -74,63 +74,64 @@ def save_app_data(data):
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
+# ============================================
+# TELEGRAM
+# ============================================
 async def init_client(app, api_id, api_hash, phone):
-    global client
-
+    """
+    Создаёт и авторизует локальный экземпляр TelegramClient.
+    Возвращает клиент; вызывающая сторона обязана его закрыть (disconnect).
+    """
     session_name = f"session_{phone.strip().replace('+', '')}"
-    client = TelegramClient(session_name, api_id, api_hash)
+    local_client = TelegramClient(session_name, api_id, api_hash)
+    await local_client.connect()
 
-    await client.connect()
-
-    if not await client.is_user_authorized():
-        await client.send_code_request(phone)
-
-        code = app.get_input_from_dialog(
-            "Код подтверждения",
-            "Введите код из SMS/Telegram:"
-        )
-
+    if not await local_client.is_user_authorized():
+        await local_client.send_code_request(phone)
+        code = app.get_input_from_dialog("Код подтверждения", "Введите код из SMS/Telegram:")
         if not code:
             raise Exception("Код не введен")
-
         try:
-            await client.sign_in(phone, code)
+            await local_client.sign_in(phone, code)
         except Exception as e:
-            if "password" in str(e).lower() or "SessionPasswordNeededError" in str(type(e).__name__):
-                # ИЗМЕНЕНИЕ: Используем новый потокобезопасный метод для запроса пароля.
-                password = app.get_input_from_dialog(
-                    "Двухфакторная авторизация",
-                    "Введите пароль 2FA:",
-                    show='*'
-                )
-
+            if "password" in str(e).lower() or "SessionPasswordNeededError" in type(e).__name__:
+                password = app.get_input_from_dialog("Двухфакторная авторизация", "Введите пароль 2FA:", show='*')
                 if not password:
                     raise Exception("Пароль 2FA не введен")
-
-                await client.sign_in(password=password)
+                await local_client.sign_in(password=password)
             else:
-                raise e
+                raise
+    return local_client
 
-    return client
 
-
-async def get_user_groups():
-    """Получить все группы пользователя"""
+async def get_user_groups(client):
     groups = []
     async for dialog in client.iter_dialogs():
         if dialog.is_group or dialog.is_channel:
             groups.append({
                 "id": dialog.id,
                 "name": dialog.title,
-                "username": dialog.entity.username if hasattr(dialog.entity, 'username') else ""
+                "username": getattr(dialog.entity, 'username', "")
             })
     return groups
 
 
-async def send_messages(selected_groups, selected_themes, message_text, log_callback):
-    """Отправка сообщений в выбранные группы и темы"""
-    success = 0
-    failed = 0
+async def get_group_topics(client, group_id):
+    try:
+        entity = await client.get_entity(group_id)
+        if not getattr(entity, 'forum', False):
+            return [], "Это не группа-форум, или темы отключены."
+        result = await client(GetForumTopicsRequest(channel=entity, offset_date=0, offset_id=0, offset_topic=0, limit=100))
+        topics = [{"topic_id": t.id, "name": t.title} for t in result.topics if not (t.closed or (t.hidden and t.id != 1))]
+        return topics, None
+    except (ValueError, TypeError):
+        return [], f"Неверный ID группы: {group_id}"
+    except (ChannelPrivateError, ChatAdminRequiredError):
+        return [], "Ошибка доступа: проверьте, что вы состоите в группе и у вас есть права на просмотр."
+    except Exception as e:
+        _logger.exception(f"Неизвестная ошибка при получении тем для группы {group_id}")
+        return [], f"Неизвестная ошибка: {e}"
+
 
 async def send_messages(client, selected_groups, selected_themes, message_text, log_callback, rate_delay):
     success, failed = 0, 0
