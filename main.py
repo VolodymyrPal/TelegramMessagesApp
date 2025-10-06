@@ -30,44 +30,47 @@ if not _logger.handlers:
 # КОНФИГУРАЦИЯ
 # ============================================
 USER_CONFIG = "config.json"
-GROUPS_FILE = "groups.json"
-client = None
+APP_DATA_FILE = "app_data.json"
 
 
 def load_config():
-    """Загрузить данные"""
+    defaults = {"api_id": "", "api_hash": "", "phone": "", "rate_delay": 10.0}
     if os.path.exists(USER_CONFIG):
         try:
             with open(USER_CONFIG, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                for k, v in defaults.items():
+                    if k not in data:
+                        data[k] = v
+                return data
+        except (json.JSONDecodeError, IOError):
             pass
-    return {"api_id": "", "api_hash": "", "phone": ""}
+    return defaults
 
 
-def save_config(api_id, api_hash, phone):
-    """Сохранить настройки"""
-    config = {"api_id": api_id, "api_hash": api_hash, "phone": phone}
+def save_config(api_id, api_hash, phone, rate_delay):
+    config = {"api_id": api_id, "api_hash": api_hash, "phone": phone, "rate_delay": rate_delay}
     with open(USER_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
 
-def load_groups_data():
-    """Загрузить список групп и тем"""
-    if os.path.exists(GROUPS_FILE):
+def load_app_data():
+    defaults = {"groups": [], "themes": [], "tags": [], "templates": []}
+    if os.path.exists(APP_DATA_FILE):
         try:
-            with open(GROUPS_FILE, 'r', encoding='utf-8') as f:
+            with open(APP_DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return data.get("groups", []), data.get("themes", [])
-        except:
+                for k in defaults:
+                    if k not in data:
+                        data[k] = defaults[k]
+                return data
+        except (json.JSONDecodeError, IOError):
             pass
-    return [], []
+    return defaults
 
 
-def save_groups_data(groups, themes):
-    """Сохранить список групп и тем"""
-    data = {"groups": groups, "themes": themes}
-    with open(GROUPS_FILE, 'w', encoding='utf-8') as f:
+def save_app_data(data):
+    with open(APP_DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
