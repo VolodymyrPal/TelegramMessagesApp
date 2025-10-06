@@ -129,28 +129,31 @@ async def send_messages(selected_groups, selected_themes, message_text, log_call
     success = 0
     failed = 0
 
+async def send_messages(client, selected_groups, selected_themes, message_text, log_callback, rate_delay):
+    success, failed = 0, 0
+
+    # Отправка в группы/каналы
     for group in selected_groups:
         try:
             await client.send_message(group["id"], message_text)
             log_callback(f"✓ Отправлено: {group['name']} (каб. {group.get('cabinet', 'N/A')})")
             success += 1
-            await asyncio.sleep(10)
+            await asyncio.sleep(rate_delay)
         except Exception as e:
-            log_callback(f"✗ Ошибка {group['name']}: {str(e)}")
+            log_callback(f"✗ Ошибка {group['name']}: {e}")
+            _logger.exception("Ошибка отправки в группу")
             failed += 1
 
+    # Отправка в форумные темы
     for theme in selected_themes:
         try:
-            await client.send_message(
-                entity=theme["group_id"],
-                message=message_text,
-                reply_to=theme["topic_id"]
-            )
+            await client.send_message(entity=theme["group_id"], message=message_text, reply_to=theme["topic_id"])
             log_callback(f"✓ Отправлено: {theme['name']} (каб. {theme.get('cabinet', 'N/A')})")
             success += 1
-            await asyncio.sleep(10)
+            await asyncio.sleep(rate_delay)
         except Exception as e:
-            log_callback(f"✗ Ошибка {theme['name']}: {str(e)}")
+            log_callback(f"✗ Ошибка {theme['name']}: {e}")
+            _logger.exception("Ошибка отправки в тему")
             failed += 1
 
     return success, failed
