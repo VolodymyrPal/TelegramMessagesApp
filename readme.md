@@ -43,3 +43,5 @@
 ---
 
 **Thank you for using Telegram Messages App.**
+
+This project is licensed under the MIT License - see the [LICENSE](License) file for details.
