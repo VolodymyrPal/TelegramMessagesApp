@@ -153,28 +153,43 @@ def save_app_data(data):
 # ============================================
 async def init_client(app, api_id, api_hash, phone):
     """
-    Создаёт и авторизует локальный экземпляр TelegramClient.
+    Создаёт, подключает и авторизует локальный экземпляр TelegramClient с помощью client.start().
     Возвращает клиент; вызывающая сторона обязана его закрыть (disconnect).
     """
     session_name = f"session_{phone.strip().replace('+', '')}"
-    local_client = TelegramClient(session_name, api_id, api_hash)
-    await local_client.connect()
 
-    if not await local_client.is_user_authorized():
-        await local_client.send_code_request(phone)
+    # ИСПРАВЛЕНИЕ 2 (актуализация): SQLiteSession не принимает аргумент 'timeout' — создаём без него.
+    # Это решает проблему "database is locked" при многопоточной работе.
+    session = SQLiteSession(session_name)
+
+    local_client = TelegramClient(session, api_id, api_hash)  # <-- Передаем объект сессии
+
+    # Функции-колбэки для client.start(), использующие синхронный диалог Tkinter
+    def code_callback():
+        # Должен быть синхронный вызов, поэтому используем нашу обертку для GUI диалога
         code = app.get_input_from_dialog("Код подтверждения", "Введите код из SMS/Telegram:")
         if not code:
-            raise Exception("Код не введен")
-        try:
-            await local_client.sign_in(phone, code)
-        except Exception as e:
-            if "password" in str(e).lower() or "SessionPasswordNeededError" in type(e).__name__:
-                password = app.get_input_from_dialog("Двухфакторная авторизация", "Введите пароль 2FA:", show='*')
-                if not password:
-                    raise Exception("Пароль 2FA не введен")
-                await local_client.sign_in(password=password)
-            else:
-                raise
+            # Важно: нужно вызвать исключение для Telethon, чтобы остановить вход
+            raise Exception("Код не введен/Отменен")
+        return code
+
+    def password_callback():
+        # Должен быть синхронный вызов для пароля 2FA
+        password = app.get_input_from_dialog("Двухфакторная авторизация", "Введите пароль 2FA:", show='*')
+        if not password:
+            # Важно: нужно вызвать исключение для Telethon, чтобы остановить вход
+            raise Exception("Пароль 2FA не введен/Отменен")
+        return password
+
+    # client.start() подключается, авторизуется и обрабатывает 2FA, используя колбэки.
+    # В актуальных версиях Telethon аргумент для 2FA — это 'password', и ему передается
+    # функция-колбэк (password_callback), если требуется интерактивный ввод.
+    await local_client.start(
+        phone=phone,
+        code_callback=code_callback,
+        password=password_callback  # <-- Передаем функцию как аргумент 'password'
+    )
+
     return local_client
 
 
@@ -195,15 +210,16 @@ async def get_group_topics(client, group_id):
         entity = await client.get_entity(group_id)
         if not getattr(entity, 'forum', False):
             return [], "Это не группа-форум, или темы отключены."
-        result = await client(GetForumTopicsRequest(channel=entity, offset_date=0, offset_id=0, offset_topic=0, limit=100))
-        topics = [{"topic_id": t.id, "name": t.title} for t in result.topics if not (t.closed or (t.hidden and t.id != 1))]
+        result = await client(
+            GetForumTopicsRequest(channel=entity, offset_date=0, offset_id=0, offset_topic=0, limit=100))
+        topics = [{"topic_id": t.id, "name": t.title} for t in result.topics if
+                  not (t.closed or (t.hidden and t.id != 1))]
         return topics, None
     except (ValueError, TypeError):
         return [], f"Неверный ID группы: {group_id}"
     except (ChannelPrivateError, ChatAdminRequiredError):
         return [], "Ошибка доступа: проверьте, что вы состоите в группе и у вас есть права на просмотр."
     except Exception as e:
-        _logger.exception(f"Неизвестная ошибка при получении тем для группы {group_id}")
         return [], f"Неизвестная ошибка: {e}"
 
 
