@@ -6,8 +6,7 @@
 
 ## Command Line Usage
 
-1. **Install PyInstaller**  
-   If you don’t have PyInstaller yet, install it:
+1. **Install PyInstaller** If you don’t have PyInstaller yet, install it:
    ```bash
    pip install pyinstaller
    ```
@@ -16,9 +15,8 @@
    pip install --upgrade pyinstaller
    ```
 
-2. **Build the Executable**  
-   Run the following command:
-   ```bash
+2. **Build the Executable** Run the following command:
+   ```
    pyinstaller --onefile --windowed --name "Telegram Messages App" --hidden-import Tcl --hidden-import Tk main.py
    ```
    After the process completes, open the **dist** directory to find the executable file.
@@ -42,6 +40,16 @@
 
 ---
 
-**Thank you for using Telegram Messages App.**
+## Dependencies and Third-Party Licenses
 
-This project is licensed under the MIT License - see the [LICENSE](License) file for details.
+The project uses a third-party library that is subject to its own license agreement.
+
+| Library      | License         | Copyright (Author)                         |
+|:-------------|:----------------|:-------------------------------------------|
+| **Telethon** | **MIT License** | Copyright (c) 2017 - Present Lonami, E. R. |
+
+---
+
+## Thank you for using Telegram Messages App.
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
