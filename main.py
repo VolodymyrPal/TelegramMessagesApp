@@ -1,3 +1,10 @@
+# ============================================
+# Telegram Sender Pro
+# Copyright (c) 2025 Palamarchuk Volodymyr
+# Licensed under the MIT License
+# See LICENSE file for details
+# ============================================
+
 import asyncio
 import json
 import os
