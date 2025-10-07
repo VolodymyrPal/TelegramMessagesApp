@@ -263,10 +263,19 @@ class TelegramSenderApp:
         self.root.geometry("1200x900")
 
         self.colors = {
-            'bg': '#f9fafb', 'card': '#ffffff', 'primary': '#2563eb', 'success': '#16a34a',
-            'danger': '#dc2626', 'warning': '#f59e0b', 'text': '#1f2937', 'text_light': '#4b5563',
-            'border': '#e5e7eb', 'input_bg': '#ffffff', 'input_fg': '#111827',
-            'tag_filter_bg': '#f3f4f6', 'hover': '#e0e7ff'
+            'bg': '#f9fafb',
+            'card': '#ffffff',
+            'primary': '#2563eb',
+            'success': '#16a34a',
+            'danger': '#dc2626',
+            'warning': '#f59e0b',
+            'text': '#1f2937',
+            'text_light': '#4b5563',
+            'border': '#e5e7eb',
+            'input_bg': '#ffffff',
+            'input_fg': '#111827',
+            'tag_filter_bg': '#f3f4f6',
+            'hover': '#e0e7ff'
         }
         self.root.configure(bg=self.colors['bg'])
         self._setup_base_styles()
