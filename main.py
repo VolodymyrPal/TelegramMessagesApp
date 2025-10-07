@@ -892,137 +892,132 @@ class TelegramSenderApp:
         elif msg_type == "info":
             messagebox.showinfo(title, message)
 
+    # ---------- ДЕЙСТВИЯ ----------
     def fetch_user_groups(self):
         if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
-            return messagebox.showwarning("Внимание", "Настройте API ключи!") or self.notebook.select(0)
-        self.fetch_btn.state(['disabled']); self.fetch_btn.config(text="⏳ Загрузка")
-        threading.Thread(target=self.fetch_in_thread, args=(self._fetch_groups_async,
-                         self.update_fetched_groups_list_ui, self.fetch_btn, "🔄  Загрузить мои группы"),
-                         daemon=True).start()
+            messagebox.showwarning("Внимание", "Настройте API ключи!");
+            return self.notebook.select(0)
+        try:
+            self.fetch_btn.state(['disabled'])
+            self.fetch_btn.config(text="⏳ Загрузка...")
+        except Exception:
+            pass
+        threading.Thread(target=self.fetch_in_thread,
+                         args=(self._fetch_groups_async, self.update_fetched_groups_list_ui, self.fetch_btn,
+                               "🔄  Загрузить мои группы"), daemon=True).start()
 
     async def _fetch_groups_async(self, client):
         return await get_user_groups(client)
 
     def update_fetched_groups_list_ui(self, groups):
-        self.fetched_groups_listbox.delete(0, tk.END); self.fetched_groups = groups
+        self.fetched_groups_listbox.delete(0, tk.END);
+        self.fetched_groups = groups
         for g in groups: self.fetched_groups_listbox.insert(tk.END, f"{g['name']} | ID: {g['id']}")
-        messagebox.showinfo("Успех", f"Загружено {len(groups)} групп!"); self.notebook.select(2)
+        messagebox.showinfo("Успех", f"Загружено {len(groups)} групп!");
+        self.notebook.select(2)
 
     def add_fetched_groups(self):
         sel = self.fetched_groups_listbox.curselection()
         if not sel: return messagebox.showwarning("Внимание", "Выберите группы для добавления!")
-        added_count = 0
+        added = 0
         for idx in sel:
             g = self.fetched_groups[idx]
             if not any(x['id'] == g['id'] for x in self.app_data["groups"]):
-                self.app_data["groups"].append({"id": g['id'], "name": g['name'], "cabinet": "", "tags": []})
-                added_count += 1
-        if added_count > 0:
-            save_app_data(self.app_data); self.refresh_all_lists()
-            messagebox.showinfo("Успех", f"Добавлено {added_count} новых групп!")
-        else: messagebox.showinfo("Информация", "Все выбранные группы уже есть в списке.")
+                self.app_data["groups"].append({"id": g['id'], "name": g['name'], "cabinet": "", "tags": []});
+                added += 1
+        if added:
+            save_app_data(self.app_data);
+            self.refresh_all_lists();
+            messagebox.showinfo("Успех", f"Добавлено {added} новых групп!");
+            self.notebook.select(1)
+        else:
+            messagebox.showinfo("Информация", "Все выбранные группы уже есть в списке.")
 
     def fetch_group_topics(self):
-        selected_group = self.topic_check_group_combo.get()
-        if not selected_group: return messagebox.showwarning("Внимание", "Выберите группу из списка!")
-        gid = self.group_name_to_id_map[selected_group]
+        selected_group_name = self.topic_check_group_combo.get()
+        if not selected_group_name: return messagebox.showwarning("Внимание", "Выберите группу из списка!")
+        gid = self.group_name_to_id_map[selected_group_name]
         if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
-            return messagebox.showwarning("Внимание", "Настройте API ключи!") or self.notebook.select(0)
-        self.fetch_topics_btn.state(['disabled']); self.fetch_topics_btn.config(text="⏳  Поиск")
-        threading.Thread(target=self.fetch_in_thread, args=(lambda c: get_group_topics(c, gid),
-                         self.update_fetched_topics_list_ui, self.fetch_topics_btn, "🔍  Получить темы"),
-                         daemon=True).start()
+            messagebox.showwarning("Внимание", "Настройте API ключи!");
+            return self.notebook.select(0)
+        try:
+            self.fetch_topics_btn.state(['disabled'])
+            self.fetch_topics_btn.config(text="⏳  Поиск...")
+        except Exception:
+            pass
+        threading.Thread(target=self.fetch_in_thread,
+                         args=(lambda c: get_group_topics(c, gid), self.update_fetched_topics_list_ui,
+                               self.fetch_topics_btn, "🔍  Получить темы"), daemon=True).start()
 
     def update_fetched_topics_list_ui(self, result):
-        """
-        Обновляет UI после получения тем и ЛОГИРУЕТ результат в основное окно лога.
-        """
-        topics, error = result
-        # Логируем результат в основное окно лога для отладки
-        self.log("=" * 40)
-        self.log("РЕЗУЛЬТАТ ЗАПРОСА ТЕМ:")
-        if error:
-            self.log(f"✗ Ошибка: {error}")
-            messagebox.showerror("Ошибка", error)
-        else:
-            self.log(f"✓ Успешно! Найдено тем: {len(topics)}")
-            if topics:
-                for t in topics:
-                    self.log(f"  - Название: {t['name']}, ID: {t['topic_id']}")
-            else:
-                self.log("  (Список полученных тем пуст)")
-            self.fetched_topics_listbox.delete(0, tk.END)
-            self.fetched_topics = topics
-            for t in topics:
-                self.fetched_topics_listbox.insert(tk.END, f"{t['name']} | ID темы: {t['topic_id']}")
-            messagebox.showinfo("Успех", f"Найдено {len(topics)} тем!")
-        self.log("=" * 40)
-
+        topics, error = result;
+        self.fetched_topics_listbox.delete(0, tk.END)
+        if error: return messagebox.showerror("Ошибка", error)
+        self.fetched_topics = topics
+        for t in topics: self.fetched_topics_listbox.insert(tk.END, f"{t['name']} | ID темы: {t['topic_id']}")
+        messagebox.showinfo("Успех", f"Найдено {len(topics)} тем!")
 
     def add_fetched_topics(self):
-        sel = self.fetched_topics_listbox.curselection(); group_name = self.topic_check_group_combo.get()
+        sel = self.fetched_topics_listbox.curselection();
+        group_name = self.topic_check_group_combo.get()
         if not group_name: return messagebox.showwarning("Внимание", "Сначала выберите группу!")
         gid = self.group_name_to_id_map[group_name]
         if not sel: return messagebox.showwarning("Внимание", "Выберите темы для добавления!")
-        added_count = 0
+        added = 0
         for idx in sel:
             t = self.fetched_topics[idx]
             if not any(x['topic_id'] == t['topic_id'] and x['group_id'] == gid for x in self.app_data["themes"]):
-                self.app_data["themes"].append({"group_id": gid, "topic_id": t['topic_id'], "name": t['name'], "cabinet": "", "tags": []})
-                added_count += 1
-        if added_count > 0:
-            save_app_data(self.app_data); self.refresh_all_lists()
-            messagebox.showinfo("Успех", f"Добавлено {added_count} новых тем!")
-        else: messagebox.showinfo("Информация", "Все выбранные темы уже есть в списке.")
+                self.app_data["themes"].append(
+                    {"group_id": gid, "topic_id": t['topic_id'], "name": t['name'], "cabinet": "", "tags": []});
+                added += 1
+        if added:
+            save_app_data(self.app_data);
+            self.refresh_all_lists();
+            messagebox.showinfo("Успех", f"Добавлено {added} новых тем!");
+            self.notebook.select(1)
+        else:
+            messagebox.showinfo("Информация", "Все выбранные темы уже есть в списке.")
 
     def fetch_in_thread(self, async_func, callback, btn, btn_text):
-        loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
-        client = None
         try:
-            # Serialize access to Telethon session DB to avoid 'database is locked'
-            with self._tg_lock:
-                client = loop.run_until_complete(init_client(self, self.config["api_id"], self.config["api_hash"], self.config["phone"]))
-                result = loop.run_until_complete(async_func(client))
+            # Запускаем singleton-воркер (если ещё не запущен)
+            TG_WORKER.start(self)
+            # Выполняем задачу последовательно под asyncio.Lock
+            result = TG_WORKER.call(async_func)
             self.root.after(0, callback, result)
         except Exception as e:
             _logger.exception("Ошибка в фоне (fetch)")
-            self.root.after(0, self.show_thread_safe_message, "error", "Ошибка", f"Произошла ошибка: {e}")
+            self.root.after(0, messagebox.showerror, "Ошибка", str(e))
         finally:
-            try:
-                if client:
-                    loop.run_until_complete(client.disconnect())
-            except Exception:
-                pass
-            try:
-                if not loop.is_closed():
-                    loop.close()
-            except Exception:
-                pass
             self.root.after(0, self._restore_button, btn, btn_text)
-
 
     def _restore_button(self, btn, text):
         try:
-            if btn.winfo_exists():
-                btn.state(['!disabled']); btn.config(text=text)
-        except Exception: pass
-
-    def _on_send_finished(self):
-        self.is_sending = False
-        self._restore_button(self.send_btn, "📨  Отправить сообщения")
+            btn.state(['!disabled'])
+            btn.config(text=text)
+        except Exception:
+            pass
 
     def load_saved_config(self):
         for key, entry in [("api_id", self.api_id_entry), ("api_hash", self.api_hash_entry),
                            ("phone", self.phone_entry), ("rate_delay", self.rate_delay_entry)]:
-            if (value := self.config.get(key)) is not None:
-                entry.delete(0, tk.END); entry.insert(0, str(value))
+            if entry is None:
+                continue
+            value = self.config.get(key)
+            if value is not None:
+                entry.delete(0, tk.END)
+                entry.insert(0, str(value))
 
     def save_settings(self):
-        api_id, api_hash, phone = self.api_id_entry.get().strip(), self.api_hash_entry.get().strip(), self.phone_entry.get().strip()
-        rate_txt = self.rate_delay_entry.get().strip() or "10"
+        api_id = self.api_id_entry.get().strip();
+        api_hash = self.api_hash_entry.get().strip();
+        phone = self.phone_entry.get().strip()
+        rate_txt = self.rate_delay_entry.get().strip() if hasattr(self, "rate_delay_entry") else "10"
         if not all([api_id, api_hash, phone]): return messagebox.showwarning("Внимание", "Заполните все поля!")
-        try: int(api_id)
-        except ValueError: return messagebox.showerror("Ошибка", "API ID должен быть числом!")
+        try:
+            int(api_id)
+        except ValueError:
+            return messagebox.showerror("Ошибка", "API ID должен быть числом!")
         if not phone.startswith("+"): return messagebox.showwarning("Внимание", "Номер телефона должен начинаться с +")
         try:
             rate_delay = float(rate_txt)
@@ -1040,78 +1035,91 @@ class TelegramSenderApp:
         for var, _ in getattr(self, 'group_vars', []) + getattr(self, 'theme_vars', []): var.set(False)
 
     def log(self, message):
-        _logger.info(message)
+        # Пишем в файл и в UI
+        try:
+            _logger.info(message)
+        except Exception:
+            pass
         self.root.after(0, self._log_threadsafe, message)
 
     def _log_threadsafe(self, message):
-        self.log_text.configure(state='normal'); self.log_text.insert(tk.END, message + "\n")
-        self.log_text.see(tk.END); self.log_text.configure(state='disabled')
+        self.log_text.configure(state='normal');
+        self.log_text.insert(tk.END, message + "\n");
+        self.log_text.see(tk.END);
+        self.log_text.configure(state='disabled')
 
     def prepare_send(self):
         if self.is_sending: return messagebox.showwarning("Внимание", "Отправка уже выполняется!")
         if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
-            return messagebox.showwarning("Внимание", "Настройте API ключи!") or self.notebook.select(0)
+            messagebox.showwarning("Внимание", "Настройте API ключи!");
+            return self.notebook.select(0)
         selected_groups = [g for var, g in getattr(self, 'group_vars', []) if var.get()]
         selected_themes = [t for var, t in getattr(self, 'theme_vars', []) if var.get()]
-        if not selected_groups and not selected_themes: return messagebox.showwarning("Внимание", "Выберите получателей!")
+        if not selected_groups and not selected_themes: return messagebox.showwarning("Внимание",
+                                                                                      "Выберите получателей!")
         message = self.message_text.get("1.0", tk.END).strip()
         if not message: return messagebox.showwarning("Внимание", "Введите текст сообщения!")
         self.show_confirmation_dialog(selected_groups, selected_themes, message)
 
     def show_confirmation_dialog(self, selected_groups, selected_themes, message):
-        dialog = tk.Toplevel(self.root); dialog.title("Подтверждение"); dialog.configure(bg=self.colors['bg']); dialog.transient(self.root); dialog.grab_set()
-        content = tk.Frame(dialog, bg=self.colors['bg']); content.pack(fill='both', expand=True, padx=20, pady=20)
-        card = self.create_card(content, f"👥  Получатели ({len(selected_groups) + len(selected_themes)})")
-        card.pack(fill='both', expand=True, pady=(0, 15))
-        text_widget = scrolledtext.ScrolledText(card, height=10, bg=self.colors['input_bg'], fg=self.colors['input_fg'])
-        text_widget.pack(fill='both', expand=True)
+        dialog = tk.Toplevel(self.root);
+        dialog.title("Подтверждение");
+        dialog.configure(bg=self.colors['bg']);
+        dialog.transient(self.root);
+        dialog.grab_set()
+        content = tk.Frame(dialog, bg=self.colors['bg']);
+        content.pack(fill='both', expand=True, padx=20, pady=20)
+        recipients_card = self.create_card(content, f"👥  Получатели ({len(selected_groups) + len(selected_themes)})");
+        recipients_card.pack(fill='both', expand=True, pady=(0, 15))
+        recipients_text = scrolledtext.ScrolledText(recipients_card, height=10, bg=self.colors['input_bg'],
+                                                    fg=self.colors['input_fg']);
+        recipients_text.pack(fill='both', expand=True)
         if selected_groups:
-            text_widget.insert(tk.END, "ГРУППЫ:\n", 'bold')
-            for g in selected_groups: text_widget.insert(tk.END, f"  • {g['name']}\n")
+            recipients_text.insert(tk.END, "ГРУППЫ:\n", 'bold');
+            for g in selected_groups: recipients_text.insert(tk.END, f"  • {g['name']}\n")
         if selected_themes:
-            text_widget.insert(tk.END, "\nТЕМЫ:\n", 'bold')
-            for t in selected_themes: text_widget.insert(tk.END, f"  • {t['name']}\n")
-        text_widget.tag_config('bold', font=('Segoe UI', 9, 'bold'), foreground=self.colors['primary'])
-        text_widget.config(state='disabled')
-        btn_frame = tk.Frame(dialog, bg=self.colors['bg']); btn_frame.pack(pady=10)
-        self.create_button(btn_frame, "✓  Отправить", lambda: self.confirm_and_send(dialog, selected_groups, selected_themes, message), variant='success').pack(side='left', padx=10)
+            recipients_text.insert(tk.END, "\nТЕМЫ:\n", 'bold');
+            for t in selected_themes: recipients_text.insert(tk.END, f"  • {t['name']}\n")
+        recipients_text.tag_config('bold', font=('Segoe UI', 9, 'bold'), foreground=self.colors['primary']);
+        recipients_text.config(state='disabled')
+        btn_frame = tk.Frame(dialog, bg=self.colors['bg']);
+        btn_frame.pack(pady=10)
+        self.create_button(btn_frame, "✓  Отправить",
+                           lambda: self.confirm_and_send(dialog, selected_groups, selected_themes, message),
+                           variant='success').pack(side='left', padx=10)
         self.create_button(btn_frame, "✗  Отмена", dialog.destroy, variant='danger').pack(side='left', padx=10)
 
     def confirm_and_send(self, dialog, selected_groups, selected_themes, message):
-        dialog.destroy(); self.is_sending = True
-        self.send_btn.state(['disabled']); self.send_btn.config(text="⏳ Идет отправка")
-        self.log("🚀 Начинаю отправку\n")
-        threading.Thread(target=self.send_in_thread, args=(selected_groups, selected_themes, message), daemon=True).start()
+        dialog.destroy();
+        self.is_sending = True
+        try:
+            self.send_btn.state(['disabled'])
+            self.send_btn.config(text="⏳ Идет отправка...")
+        except Exception:
+            pass
+        self.log("🚀 Начинаю отправку...\n")
+        threading.Thread(target=self.send_in_thread, args=(selected_groups, selected_themes, message),
+                         daemon=True).start()
 
     def send_in_thread(self, selected_groups, selected_themes, message):
-        loop = asyncio.new_event_loop(); asyncio.set_event_loop(loop)
-        client = None
         try:
             self.log("🔐 Подключение к Telegram...")
-            # Serialize access to Telethon session DB to avoid 'database is locked'
-            with self._tg_lock:
-                client = loop.run_until_complete(init_client(self, self.config["api_id"], self.config["api_hash"], self.config["phone"]))
-                self.log("✓ Успешно подключено!\n")
-                rate_delay = float(self.config.get("rate_delay", 10))
-                success, failed = loop.run_until_complete(send_messages(client, selected_groups, selected_themes, message, self.log, rate_delay))
-            self.log(f"\n{'=' * 30}\n📊 ИТОГО: ✓ {success} | ✗ {failed}\n{'=' * 30}\n")
-            self.root.after(0, self.show_thread_safe_message, "info", "Готово", f"Отправка завершена. Успешно: {success}, Ошибки: {failed}")
+            TG_WORKER.start(self)
+            self.log("✓ Успешно подключено!")
+
+            rate_delay = float(self.config.get("rate_delay", 10))
+
+            def _send(client):
+                return send_messages(client, selected_groups, selected_themes, message, self.log, rate_delay)
+
+            success, failed = TG_WORKER.call(_send)
+            self.log(f" {'=' * 30} 📊 ИТОГО: ✓ {success} | ✗ {failed} {'=' * 30} ")
         except Exception as e:
-            _logger.exception("Критическая ошибка отправки")
-            self.log(f"\n❌ КРИТИЧЕСКАЯ ОШИБКА: {e}\n")
-            self.root.after(0, self.show_thread_safe_message, "error", "Ошибка", f"Произошла ошибка: {e}")
+            _logger.exception("Ошибка при отправке")
+            self.root.after(0, messagebox.showerror, "Ошибка", str(e))
         finally:
-            try:
-                if client:
-                    loop.run_until_complete(client.disconnect())
-            except Exception:
-                pass
-            try:
-                if not loop.is_closed():
-                    loop.close()
-            except Exception:
-                pass
-            self.root.after(0, self._on_send_finished)
+            self.is_sending = False
+            self.root.after(0, self._restore_button, self.send_btn, "📨  Отправить сообщения")
 
 
 # ============================================
