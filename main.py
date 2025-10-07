@@ -1,13 +1,87 @@
 import asyncio
 import json
 import os
+import platform
 import threading
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, simpledialog
 
 from telethon import TelegramClient
-from telethon.tl.functions.channels import GetForumTopicsRequest
 from telethon.errors import ChannelPrivateError, ChatAdminRequiredError
+from telethon.sessions import SQLiteSession
+from telethon.tl.functions.channels import GetForumTopicsRequest
+
+
+# ============================================
+# DEDICATED TELETHON WORKER (single client/loop)
+# ============================================
+class TelethonWorker:
+    def __init__(self):
+        self.thread = None
+        self.loop = None
+        self.client = None
+        self.lock = None
+        self._ready = threading.Event()
+
+    def start(self, app):
+        if self.thread is not None:
+            return
+
+        def runner():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.lock = asyncio.Lock()
+
+            async def _ensure_client():
+                self.client = await init_client(app, app.config["api_id"], app.config["api_hash"], app.config["phone"])
+
+            # Create client once
+            self.loop.run_until_complete(_ensure_client())
+            self._ready.set()
+
+            try:
+                self.loop.run_forever()
+            finally:
+                # graceful shutdown
+                try:
+                    pending = asyncio.all_tasks(loop=self.loop)
+                    for t in list(pending):
+                        t.cancel()
+                    if pending:
+                        self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                except Exception:
+                    pass
+                try:
+                    if self.client and self.loop.run_until_complete(self.client.is_connected()):
+                        self.loop.run_until_complete(self.client.disconnect())
+                except Exception:
+                    pass
+                self.loop.stop()
+                self.loop.close()
+
+        self.thread = threading.Thread(target=runner, name="TelethonWorker", daemon=True)
+        self.thread.start()
+        self._ready.wait()
+
+    def call(self, coro_factory):
+        """
+        coro_factory: function(client) -> coroutine
+        Выполняет корутину в единственном event loop под asyncio.Lock,
+        чтобы сериализовать доступ к SQLiteSession и исключить database is locked.
+        """
+        if self.thread is None:
+            raise RuntimeError("TelethonWorker не запущен. Вызовите start(app).")
+
+        async def _run_serialized():
+            async with self.lock:
+                return await coro_factory(self.client)
+
+        fut = asyncio.run_coroutine_threadsafe(_run_serialized(), self.loop)
+        return fut.result()
+
+
+TG_WORKER = TelethonWorker()
+# <--- ИСПРАВЛЕНИЕ 1: Добавлен импорт для управления сессией SQLite
 
 # ============================================
 # ЛОГИРОВАНИЕ
