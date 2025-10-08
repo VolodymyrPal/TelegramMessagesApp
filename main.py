@@ -131,10 +131,8 @@ def load_config():
         try:
             with open(USER_CONFIG, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                for k, v in defaults.items():
-                    if k not in data:
-                        data[k] = v
-                return data
+                defaults.update(data)
+                return defaults
         except (json.JSONDecodeError, IOError):
             pass
     return defaults
@@ -152,9 +150,17 @@ def load_app_data():
         try:
             with open(APP_DATA_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                for k in defaults:
+                for k, v in defaults.items():
                     if k not in data:
-                        data[k] = defaults[k]
+                        data[k] = v
+                for item_list in ("groups", "themes"):
+                    for item in data.get(item_list, []):
+                        if 'client_number' not in item:
+                            item['client_number'] = item.pop('cabinet', "")
+                        if 'name' not in item:
+                            item['name'] = ""
+                        if 'custom_templates' not in item or not isinstance(item.get('custom_templates'), dict):
+                            item['custom_templates'] = {}
                 return data
         except (json.JSONDecodeError, IOError):
             pass
