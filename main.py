@@ -233,22 +233,22 @@ class TelegramSenderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Telegram Sender Pro")
-        self.root.geometry("1200x900")
+
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        window_width = int(screen_width * 0.85)
+        window_height = int(screen_height * 0.85)
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.root.minsize(int(screen_width * 0.5), int(screen_height * 0.5))
 
         self.colors = {
-            'bg': '#f9fafb',
-            'card': '#ffffff',
-            'primary': '#2563eb',
-            'success': '#16a34a',
-            'danger': '#dc2626',
-            'warning': '#f59e0b',
-            'text': '#1f2937',
-            'text_light': '#4b5563',
-            'border': '#e5e7eb',
-            'input_bg': '#ffffff',
-            'input_fg': '#111827',
-            'tag_filter_bg': '#f3f4f6',
-            'hover': '#e0e7ff'
+            'bg': '#f8fafc', 'card': '#ffffff', 'primary': '#3b82f6', 'primary_hover': '#2563eb',
+            'success': '#10b981', 'success_hover': '#059669', 'danger': '#ef4444', 'danger_hover': '#dc2626',
+            'warning': '#f59e0b', 'secondary': '#6366f1', 'secondary_hover': '#4f46e5', 'text': '#0f172a',
+            'text_light': '#64748b', 'text_muted': '#94a3b8', 'border': '#e2e8f0', 'border_focus': '#3b82f6',
+            'input_bg': '#ffffff', 'input_fg': '#0f172a', 'tag_filter_bg': '#f1f5f9', 'hover': '#f1f5f9'
         }
         self.root.configure(bg=self.colors['bg'])
         self._setup_base_styles()
@@ -259,59 +259,52 @@ class TelegramSenderApp:
         self.fetched_groups = []
         self.fetched_topics = []
 
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+
         self.create_widgets()
         self.load_saved_config()
         self.refresh_all_lists()
 
-    # ---------- СТИЛИ ----------
     def _setup_base_styles(self):
         style = ttk.Style()
         style.theme_use('clam')
-        # Notebook
-        style.configure('TNotebook', background=self.colors['bg'], borderwidth=0)
+
+        style.configure('TNotebook', background=self.colors['bg'], borderwidth=0, tabmargins=[0, 0, 0, 0])
         style.configure('TNotebook.Tab', background=self.colors['card'], foreground=self.colors['text_light'],
-                        padding=[20, 12], font=('Segoe UI', 10), borderwidth=0)
+                        padding=[24, 14], font=('Segoe UI', 10), borderwidth=0, relief='flat')
         style.map('TNotebook.Tab', background=[('selected', self.colors['primary'])],
                   foreground=[('selected', '#ffffff')])
-        # Card
+
         style.configure('Card.TLabelframe', background=self.colors['card'], bordercolor=self.colors['border'],
-                        borderwidth=1, relief='solid')
+                        borderwidth=1, relief='solid', padding=16)
         style.configure('Card.TLabelframe.Label', background=self.colors['card'], foreground=self.colors['text'],
                         font=('Segoe UI', 11, 'bold'))
-        # Combobox
-        style.configure('TCombobox', fieldbackground=self.colors['input_bg'], background=self.colors['input_bg'],
-                        foreground=self.colors['input_fg'], arrowcolor=self.colors['text'],
-                        bordercolor=self.colors['border'], selectbackground=self.colors['primary'],
-                        selectforeground='#ffffff')
-        style.map('TCombobox', fieldbackground=[('readonly', self.colors['input_bg'])])
-        # Кнопки (ttk)
+
         self._mk_button_styles()
 
     def _mk_button_styles(self):
         style = ttk.Style()
-        base = {'font': ('Segoe UI', 10, 'bold'), 'padding': (16, 10)}
+        base = {'font': ('Segoe UI', 10, 'bold'), 'padding': (18, 12), 'borderwidth': 0, 'relief': 'flat'}
         variants = {
-            'Primary': self.colors['primary'],
-            'Success': self.colors['success'],
-            'Danger': self.colors['danger'],
-            'Secondary': '#64748b',
+            'Primary': (self.colors['primary'], self.colors['primary_hover']),
+            'Success': (self.colors['success'], self.colors['success_hover']),
+            'Danger': (self.colors['danger'], self.colors['danger_hover']),
+            'Secondary': (self.colors['secondary'], self.colors['secondary_hover']),
         }
-        for name, color in variants.items():
-            darker = self._adjust_color(color, 0.9)
-            pressed = self._adjust_color(color, 0.8)
+
+        for name, (color, hover) in variants.items():
+            pressed = self._adjust_color(hover, 0.9)
             stylename = f'Btn.{name}.TButton'
-            style.configure(stylename, background=color, foreground='#ffffff', **base)
+            style.configure(stylename, background=color, foreground='#ffffff', focuscolor='none', **base)
             style.map(stylename,
-                      background=[('active', darker), ('pressed', pressed), ('disabled', '#cbd5e1')],
+                      background=[('active', hover), ('pressed', pressed), ('disabled', '#cbd5e1')],
                       foreground=[('disabled', '#ffffff')])
 
     def _adjust_color(self, color, factor=0.9):
         try:
-            r16, g16, b16 = self.root.winfo_rgb(color)
-            r = max(0, min(255, int((r16 / 65535) * 255 * factor)))
-            g = max(0, min(255, int((g16 / 65535) * 255 * factor)))
-            b = max(0, min(255, int((b16 / 65535) * 255 * factor)))
-            return f'#{r:02x}{g:02x}{b:02x}'
+            r, g, b = [int(x * factor) for x in self.root.winfo_rgb(color)[0:3:1]]
+            return f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
         except Exception:
             return color
 
