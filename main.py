@@ -176,21 +176,11 @@ def save_app_data(data):
 # TELEGRAM
 # ============================================
 async def init_client(app, api_id, api_hash, phone):
-    """
-    Создаёт, подключает и авторизует локальный экземпляр TelegramClient с помощью client.start().
-    Возвращает клиент; вызывающая сторона обязана его закрыть (disconnect).
-    """
     session_name = f"session_{phone.strip().replace('+', '')}"
-
-    # ИСПРАВЛЕНИЕ 2 (актуализация): SQLiteSession не принимает аргумент 'timeout' — создаём без него.
-    # Это решает проблему "database is locked" при многопоточной работе.
     session = SQLiteSession(session_name)
+    local_client = TelegramClient(session, api_id, api_hash)
 
-    local_client = TelegramClient(session, api_id, api_hash)  # <-- Передаем объект сессии
-
-    # Функции-колбэки для client.start(), использующие синхронный диалог Tkinter
     def code_callback():
-        # Должен быть синхронный вызов, поэтому используем нашу обертку для GUI диалога
         code = app.get_input_from_dialog("Код подтверждения", "Введите код из SMS/Telegram:")
         if not code:
             # Важно: нужно вызвать исключение для Telethon, чтобы остановить вход
@@ -198,22 +188,12 @@ async def init_client(app, api_id, api_hash, phone):
         return code
 
     def password_callback():
-        # Должен быть синхронный вызов для пароля 2FA
         password = app.get_input_from_dialog("Двухфакторная авторизация", "Введите пароль 2FA:", show='*')
         if not password:
-            # Важно: нужно вызвать исключение для Telethon, чтобы остановить вход
             raise Exception("Пароль 2FA не введен/Отменен")
         return password
 
-    # client.start() подключается, авторизуется и обрабатывает 2FA, используя колбэки.
-    # В актуальных версиях Telethon аргумент для 2FA — это 'password', и ему передается
-    # функция-колбэк (password_callback), если требуется интерактивный ввод.
-    await local_client.start(
-        phone=phone,
-        code_callback=code_callback,
-        password=password_callback  # <-- Передаем функцию как аргумент 'password'
-    )
-
+    await local_client.start(phone=phone, code_callback=code_callback, password=password_callback)
     return local_client
 
 
