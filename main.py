@@ -183,7 +183,6 @@ async def init_client(app, api_id, api_hash, phone):
     def code_callback():
         code = app.get_input_from_dialog("Код подтверждения", "Введите код из SMS/Telegram:")
         if not code:
-            # Важно: нужно вызвать исключение для Telethon, чтобы остановить вход
             raise Exception("Код не введен/Отменен")
         return code
 
@@ -225,36 +224,6 @@ async def get_group_topics(client, group_id):
         return [], "Ошибка доступа: проверьте, что вы состоите в группе и у вас есть права на просмотр."
     except Exception as e:
         return [], f"Неизвестная ошибка: {e}"
-
-
-async def send_messages(client, selected_groups, selected_themes, message_text, log_callback, rate_delay):
-    success, failed = 0, 0
-
-    # Отправка в группы/каналы
-    for group in selected_groups:
-        try:
-            await client.send_message(group["id"], message_text)
-            log_callback(f"✓ Отправлено: {group['name']} (каб. {group.get('cabinet', 'N/A')})")
-            success += 1
-            await asyncio.sleep(rate_delay)
-        except Exception as e:
-            log_callback(f"✗ Ошибка {group['name']}: {e}")
-            _logger.exception("Ошибка отправки в группу")
-            failed += 1
-
-    # Отправка в форумные темы
-    for theme in selected_themes:
-        try:
-            await client.send_message(entity=theme["group_id"], message=message_text, reply_to=theme["topic_id"])
-            log_callback(f"✓ Отправлено: {theme['name']} (каб. {theme.get('cabinet', 'N/A')})")
-            success += 1
-            await asyncio.sleep(rate_delay)
-        except Exception as e:
-            log_callback(f"✗ Ошибка {theme['name']}: {e}")
-            _logger.exception("Ошибка отправки в тему")
-            failed += 1
-
-    return success, failed
 
 
 # ============================================
