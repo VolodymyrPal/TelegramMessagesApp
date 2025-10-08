@@ -8,13 +8,12 @@
 import asyncio
 import json
 import os
-import platform
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox, simpledialog
+from tkinter import ttk, scrolledtext, messagebox, simpledialog, filedialog
 
 from telethon import TelegramClient
-from telethon.errors import ChannelPrivateError, ChatAdminRequiredError
+from telethon.errors import ChannelPrivateError, ChatAdminRequiredError, ApiIdInvalidError
 from telethon.sessions import SQLiteSession
 from telethon.tl.functions.channels import GetForumTopicsRequest
 
@@ -34,22 +33,29 @@ class TelethonWorker:
         if self.thread is not None:
             return
 
+        self._ready.clear()
+        exception_holder = {}
+
         def runner():
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-            self.lock = asyncio.Lock()
+            try:
+                self.loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self.loop)
+                self.lock = asyncio.Lock()
 
-            async def _ensure_client():
-                self.client = await init_client(app, app.config["api_id"], app.config["api_hash"], app.config["phone"])
+                async def _ensure_client():
+                    self.client = await init_client(app, app.config["api_id"], app.config["api_hash"],
+                                                    app.config["phone"])
 
-            # Create client once
-            self.loop.run_until_complete(_ensure_client())
+                self.loop.run_until_complete(_ensure_client())
+            except Exception as exc:
+                exception_holder['exc'] = exc
+                self._ready.set()
+                return
+
             self._ready.set()
-
             try:
                 self.loop.run_forever()
             finally:
-                # graceful shutdown
                 try:
                     pending = asyncio.all_tasks(loop=self.loop)
                     for t in list(pending):
@@ -70,12 +76,18 @@ class TelethonWorker:
         self.thread.start()
         self._ready.wait()
 
+        if 'exc' in exception_holder:
+            try:
+                self.thread.join(timeout=0.1)
+            except Exception:
+                pass
+            self.thread = None
+            self.loop = None
+            self.client = None
+            self.lock = None
+            raise exception_holder['exc']
+
     def call(self, coro_factory):
-        """
-        coro_factory: function(client) -> coroutine
-        Выполняет корутину в единственном event loop под asyncio.Lock,
-        чтобы сериализовать доступ к SQLiteSession и исключить database is locked.
-        """
         if self.thread is None:
             raise RuntimeError("TelethonWorker не запущен. Вызовите start(app).")
 
@@ -88,7 +100,6 @@ class TelethonWorker:
 
 
 TG_WORKER = TelethonWorker()
-# <--- ИСПРАВЛЕНИЕ 1: Добавлен импорт для управления сессией SQLite
 
 # ============================================
 # ЛОГИРОВАНИЕ
