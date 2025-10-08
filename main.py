@@ -308,111 +308,140 @@ class TelegramSenderApp:
         except Exception:
             return color
 
-    # ---------- ЕДИНЫЕ ФАБРИКИ ВИДЖЕТОВ ----------
+    # UI helper: Button creation with styling
     def create_button(self, parent, text, command, variant='primary', **kwargs):
         style_map = {
-            'primary': 'Btn.Primary.TButton',
-            'success': 'Btn.Success.TButton',
-            'danger': 'Btn.Danger.TButton',
-            'secondary': 'Btn.Secondary.TButton',
+            'primary': 'Btn.Primary.TButton', 'success': 'Btn.Success.TButton',
+            'danger': 'Btn.Danger.TButton', 'secondary': 'Btn.Secondary.TButton',
         }
-        style_name = style_map.get(str(variant).lower())
-        if not style_name:
-            # кастомный цвет: сгенерировать стиль
-            color = variant if isinstance(variant, str) else self.colors['primary']
-            darker = self._adjust_color(color, 0.9)
-            pressed = self._adjust_color(color, 0.8)
-            style_name = f"Btn.Custom_{color.replace('#', '')}.TButton"
-            s = ttk.Style()
-            s.configure(style_name, background=color, foreground='#ffffff', font=('Segoe UI', 10, 'bold'),
-                        padding=(16, 10))
-            s.map(style_name,
-                  background=[('active', darker), ('pressed', pressed), ('disabled', '#cbd5e1')],
-                  foreground=[('disabled', '#ffffff')])
-        return ttk.Button(parent, text=text, command=command, style=style_name, **kwargs)
+        style_name = style_map.get(str(variant).lower(), 'Btn.Primary.TButton')
+        btn = ttk.Button(parent, text=text, command=command, style=style_name, **kwargs)
+        btn.bind('<Enter>', lambda e: btn.configure(cursor='hand2'))
+        return btn
 
     def create_card(self, parent, title):
         return ttk.LabelFrame(parent, text=title, style='Card.TLabelframe', padding=20)
 
+    # UI helper: Label creation
     def mk_label(self, parent, text, bold=False, color=None):
-        return tk.Label(parent, text=text, bg=self.colors['card'] if parent != self.root else self.colors['bg'],
-                        fg=color or self.colors['text'], font=('Segoe UI', 10, 'bold' if bold else 'normal'))
-
-    def _bind_clipboard_shortcuts(self, widget):
-        if platform.system() == "Darwin":
-            mapping = {
-                '<Command-c>': '<<Copy>>', '<Command-C>': '<<Copy>>',
-                '<Command-v>': '<<Paste>>', '<Command-V>': '<<Paste>>',
-                '<Command-x>': '<<Cut>>', '<Command-X>': '<<Cut>>',
-            }
-            for seq, ev in mapping.items():
-                widget.bind(seq, lambda e, ev=ev: widget.event_generate(ev) or 'break')
-        return widget
+        """
+        Создает обычный текстовый ярлык, наследуя фон от родителя. Некоторые ttk-виджеты
+        (например, LabelFrame) не поддерживают опцию 'bg', поэтому безопасно обрабатываем эту ситуацию.
+        """
+        try:
+            bg = parent.cget('bg')
+        except tk.TclError:
+            # ttk.Frame/LabelFrame может не иметь опции bg; используем цвет карточки
+            bg = self.colors.get('card', self.colors.get('bg', '#ffffff'))
+        return tk.Label(
+            parent,
+            text=text,
+            bg=bg,
+            fg=color or self.colors['text'],
+            font=('Segoe UI', 10, 'bold' if bold else 'normal')
+        )
 
     def add_context_menu(self, widget):
-        menu = tk.Menu(widget, tearoff=0, bg=self.colors['card'], fg=self.colors['text'])
+        menu = tk.Menu(widget, tearoff=0, bg=self.colors['card'], fg=self.colors['text'],
+                       activebackground=self.colors['primary'], activeforeground='#ffffff',
+                       relief='flat', borderwidth=1)
         menu.add_command(label="Вырезать", command=lambda: widget.event_generate("<<Cut>>"))
         menu.add_command(label="Копировать", command=lambda: widget.event_generate("<<Copy>>"))
         menu.add_command(label="Вставить", command=lambda: widget.event_generate("<<Paste>>"))
-        widget.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
-        widget.bind("<Control-Button-1>", lambda e: menu.tk_popup(e.x_root, e.y_root))
-        self._bind_clipboard_shortcuts(widget)
 
+        def show_menu(e):
+            menu.tk_popup(e.x_root, e.y_root)
+
+        widget.bind("<Button-3>", show_menu)
+        widget.bind("<Control-Button-1>", show_menu)
+
+    # UI helper: Entry creation
     def mk_entry(self, parent, **kwargs):
         entry = tk.Entry(parent, font=('Segoe UI', 10), bg=self.colors['input_bg'], fg=self.colors['input_fg'],
-                         relief='solid', bd=1, insertbackground=self.colors['text'], **kwargs)
+                         relief='solid', bd=1, insertbackground=self.colors['text'], highlightthickness=2,
+                         highlightbackground=self.colors['border'], highlightcolor=self.colors['border_focus'],
+                         **kwargs)
+        entry.bind('<FocusIn>', lambda e: entry.config(highlightbackground=self.colors['border_focus']))
+        entry.bind('<FocusOut>', lambda e: entry.config(highlightbackground=self.colors['border']))
         self.add_context_menu(entry)
         return entry
 
+    # UI helper: Text widget creation
     def mk_text(self, parent, **kwargs):
-        txt = scrolledtext.ScrolledText(parent, wrap=tk.WORD, font=('Segoe UI', 10),
-                                        bg=self.colors['input_bg'], fg=self.colors['input_fg'],
-                                        relief='solid', bd=1, insertbackground=self.colors['text'], **kwargs)
+        frame = tk.Frame(parent, bg=self.colors['border'], bd=1, relief='solid')
+        txt = scrolledtext.ScrolledText(frame, wrap=tk.WORD, font=('Segoe UI', 10),
+                                        bg=self.colors['input_bg'], fg=self.colors['input_fg'], relief='flat', bd=0,
+                                        insertbackground=self.colors['text'], highlightthickness=0, **kwargs)
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+        txt.grid(row=0, column=0, sticky="nsew")
         self.add_context_menu(txt)
-        return txt
+        return frame, txt
 
-    def mk_combobox(self, parent, **kwargs):
-        cb = ttk.Combobox(parent, **kwargs)
+    def mk_checkbutton(self, parent, text, var):
+        bg = parent.cget('bg')
+        cb = tk.Checkbutton(parent, text=text, variable=var, bg=bg, fg=self.colors['text'],
+                            selectcolor=self.colors['input_bg'], activebackground=bg,
+                            activeforeground=self.colors['text'], font=('Segoe UI', 9),
+                            relief='flat', borderwidth=0, highlightthickness=0, cursor='hand2')
+        cb.bind('<Enter>', lambda e: cb.config(fg=self.colors['primary']))
+        cb.bind('<Leave>', lambda e: cb.config(fg=self.colors['text']))
         return cb
 
-    def mk_checkbutton(self, parent, text, var, bg_card=True):
-        return tk.Checkbutton(parent, text=text, variable=var,
-                              bg=self.colors['card'] if bg_card else self.colors['tag_filter_bg'],
-                              fg=self.colors['text'], selectcolor=self.colors['input_bg'],
-                              activebackground=self.colors['card'] if bg_card else self.colors['tag_filter_bg'],
-                              activeforeground=self.colors['text'], font=('Segoe UI', 9))
-
-    def mk_listbox(self, parent, height=12):
+    def mk_listbox(self, parent):
         frame = tk.Frame(parent, bg=self.colors['card'])
-        frame.pack(fill='both', expand=True, pady=(0, 15))
         listbox = tk.Listbox(frame, font=('Segoe UI', 9), bg=self.colors['input_bg'], fg=self.colors['input_fg'],
-                             relief='solid', bd=1, selectbackground=self.colors['primary'], selectforeground='#ffffff',
-                             height=height, exportselection=False)
-        scrollbar = tk.Scrollbar(frame, orient='vertical', command=listbox.yview)
+                             relief='solid', bd=1, selectbackground=self.colors['primary'],
+                             selectforeground='#ffffff', activestyle='none', exportselection=False,
+                             highlightthickness=1, highlightbackground=self.colors['border'],
+                             highlightcolor=self.colors['border_focus'])
+        scrollbar = ttk.Scrollbar(frame, orient='vertical', command=listbox.yview)
         listbox.config(yscrollcommand=scrollbar.set)
-        listbox.pack(side='left', fill='both', expand=True)
-        scrollbar.pack(side='right', fill='y')
-        return listbox
 
-    # ---------- УТИЛИТЫ ----------
-    def _on_mousewheel(self, event, canvas):
-        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+        listbox.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
+        return frame, listbox
 
-    def _bind_mousewheel(self, widget, canvas):
-        widget.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", lambda ev: self._on_mousewheel(ev, canvas)))
-        widget.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
+    def _create_scrollable_area(self, parent):
+        container = tk.Frame(parent, bg=self.colors['bg'])
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
 
-    # ---------- UI ----------
+        canvas = tk.Canvas(container, bg=self.colors['bg'], highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.colors['bg'])
+
+
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind('<Configure>', on_canvas_configure)
+
+        scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
+
+        return container, scrollable_frame
+
     def create_widgets(self):
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=0, pady=0)
+        main_container = tk.Frame(self.root, bg=self.colors['bg'])
+        main_container.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        main_container.grid_rowconfigure(0, weight=1)
+        main_container.grid_columnconfigure(0, weight=1)
+
+        self.notebook = ttk.Notebook(main_container)
+        self.notebook.grid(row=0, column=0, sticky="nsew")
+
         tabs = {
             "  ⚙️  Настройки  ": self.create_settings_tab,
             "  📋  Управление списками  ": self.create_manage_tab,
-            "  📥  Получить группы  ": self.create_fetch_tab,
-            "  🔎  Проверка тем  ": self.create_topic_checker_tab,
+            "  📥  Получить группы и темы  ": self.create_fetch_tab,
             "  📤  Отправка сообщений  ": self.create_sending_tab
         }
+
         for text, creator in tabs.items():
             tab_frame = tk.Frame(self.notebook, bg=self.colors['bg'])
             self.notebook.add(tab_frame, text=text)
