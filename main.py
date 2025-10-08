@@ -319,6 +319,7 @@ class TelegramSenderApp:
         btn.bind('<Enter>', lambda e: btn.configure(cursor='hand2'))
         return btn
 
+    # UI helper: Card (LabelFrame) creation
     def create_card(self, parent, title):
         return ttk.LabelFrame(parent, text=title, style='Card.TLabelframe', padding=20)
 
@@ -447,283 +448,541 @@ class TelegramSenderApp:
             self.notebook.add(tab_frame, text=text)
             creator(tab_frame)
 
+    # ============================================
+    # UI FUNCTIONS
+    # ============================================
+    # -- Settings Page --
     def create_settings_tab(self, parent):
-        container = tk.Frame(parent, bg=self.colors['bg']);
-        container.place(relx=0.5, rely=0.5, anchor='center')
-        card = self.create_card(container, "🔐  Настройки Telegram API");
-        card.pack(padx=40, pady=20)
-        fields_frame = tk.Frame(card, bg=self.colors['card']);
-        fields_frame.pack(fill="x", pady=10)
 
-        def field(label, row):
-            self.mk_label(fields_frame, label, bold=True).grid(row=row, column=0, sticky='w', pady=12, padx=(0, 15))
-            e = self.mk_entry(fields_frame);
-            e.grid(row=row, column=1, sticky='ew', pady=12);
-            e.config(width=40)
-            return e
+        # Настройка контейнера и создание прокручиваемой области
 
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        container, scrollable_frame = self._create_scrollable_area(parent)
+        container.grid(row=0, column=0, sticky="nsew")
+
+        scrollable_frame.grid_columnconfigure(0, weight=1)
+        scrollable_frame.grid_columnconfigure(1, weight=8)
+        scrollable_frame.grid_columnconfigure(2, weight=1)
+        scrollable_frame.grid_rowconfigure(0, weight=1)
+
+        # Карточка настроек Telegram API располагается в центральной колонке (80% ширины)
+        card = self.create_card(scrollable_frame, "🔐  Настройки Telegram API")
+        card.grid(row=0, column=1, sticky='nsew', pady=(20, 12))
+        card.columnconfigure(1, weight=1)
+
+        def field(label, row, show=None):
+            """Создать подпись и поле ввода."""
+            self.mk_label(card, label, bold=True).grid(row=row, column=0, sticky='nsew', pady=6, padx=(0, 10))
+            entry = self.mk_entry(card, show=show)
+            entry.grid(row=row, column=1, sticky='nsew', pady=6)
+            return entry
+
+        # Поля ввода
         self.api_id_entry = field("API ID:", 0)
         self.api_hash_entry = field("API Hash:", 1)
         self.phone_entry = field("Телефон:", 2)
-        self.rate_delay_entry = field("Задержка (сек на отправку):", 3)
-        fields_frame.columnconfigure(1, weight=1)
+        self.rate_delay_entry = field("Задержка (сек):", 3)
 
-        btn_frame = tk.Frame(card, bg=self.colors['card']);
-        btn_frame.pack(pady=20)
-        self.create_button(btn_frame, "💾  Сохранить настройки", self.save_settings, variant='success').pack()
-        self.settings_status = tk.Label(card, text="", bg=self.colors['card'], fg=self.colors['text'],
+        # Подсказка
+        tk.Label(card, text="💡 Получите API ключи на my.telegram.org/apps",
+                 bg=self.colors['card'], fg=self.colors['text_muted'],
+                 font=('Segoe UI', 9, 'italic')).grid(row=4, column=0, columnspan=2, pady=(8, 12), sticky='nsew')
+
+        # Кнопка сохранения
+        self.create_button(card, "💾  Сохранить настройки", self.save_settings,
+                           variant='success').grid(row=5, column=0, columnspan=2, pady=10, sticky='nsew')
+
+        # Строка статуса
+        self.settings_status = tk.Label(card, text="", bg=self.colors['card'], fg=self.colors['success'],
                                         font=('Segoe UI', 10))
-        self.settings_status.pack(pady=10)
+        self.settings_status.grid(row=6, column=0, columnspan=2, pady=(6, 10), sticky='nsew')
 
+    # -- Manage Page: UI --
     def create_manage_tab(self, parent):
-        main = tk.Frame(parent, bg=self.colors['bg']);
-        main.pack(fill="both", expand=True, padx=20, pady=20)
-        main.grid_columnconfigure((0, 1, 2), weight=1);
-        main.grid_rowconfigure(0, weight=1)
-        self.create_tags_manager(main).grid(row=0, column=0, sticky='nsew', padx=(0, 10))
-        self.create_groups_manager(main).grid(row=0, column=1, sticky='nsew', padx=(5, 5))
-        self.create_themes_manager(main).grid(row=0, column=2, sticky='nsew', padx=(10, 0))
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_columnconfigure(1, weight=2)
+        parent.grid_columnconfigure(2, weight=2)
+        parent.grid_rowconfigure(0, weight=1)
 
+        self.create_tags_manager(parent).grid(row=0, column=0, sticky='nsew', padx=(0, 8), pady=16)
+        self.create_groups_manager(parent).grid(row=0, column=1, sticky='nsew', padx=8, pady=16)
+        self.create_themes_manager(parent).grid(row=0, column=2, sticky='nsew', padx=(8, 0), pady=16)
+
+    # Manage: UI component for tags
     def create_tags_manager(self, parent):
         card = self.create_card(parent, "🏷️  Управление тегами")
-        self.tags_listbox = self.mk_listbox(card)
-        form = tk.Frame(card, bg=self.colors['card']);
-        form.pack(fill='x', pady=5)
-        self.mk_label(form, "Новый тег:", bold=True).pack(side='left')
-        self.tag_name_entry = self.mk_entry(form);
-        self.tag_name_entry.pack(side='left', fill='x', expand=True, padx=(10, 0))
-        btns = tk.Frame(card, bg=self.colors['card']);
-        btns.pack(fill='x', pady=10)
-        self.create_button(btns, "➕", self.add_tag, variant='success', width=5).pack(side='left', expand=True, fill='x',
-                                                                                     padx=2)
-        self.create_button(btns, "❌", self.delete_tag, variant='danger', width=5).pack(side='left', expand=True,
-                                                                                       fill='x', padx=2)
+        card.rowconfigure(0, weight=1)
+        card.columnconfigure(0, weight=1)
+
+        list_frame, self.tags_listbox = self.mk_listbox(card)
+        list_frame.grid(row=0, column=0, sticky='nsew', pady=(0, 15))
+
+        form = tk.Frame(card, bg=self.colors['card'])
+        form.grid(row=1, column=0, sticky='ew', pady=8)
+        form.columnconfigure(1, weight=1)
+        self.mk_label(form, "Новый тег:", bold=True).grid(row=0, column=0, padx=(0, 10))
+        self.tag_name_entry = self.mk_entry(form)
+        self.tag_name_entry.grid(row=0, column=1, sticky='ew')
+
+        btns = tk.Frame(card, bg=self.colors['card'])
+        btns.grid(row=2, column=0, sticky='ew', pady=12)
+        btns.columnconfigure((0, 1), weight=1)
+        self.create_button(btns, "➕", self.add_tag, variant='success').grid(row=0, column=0, sticky='ew', padx=(0, 3))
+        self.create_button(btns, "✖", self.delete_tag, variant='danger').grid(row=0, column=1, sticky='ew', padx=(3, 0))
         return card
 
+    # Manage: UI component for groups
     def create_groups_manager(self, parent):
         card = self.create_card(parent, "📁  Управление группами")
-        self.groups_listbox = self.mk_listbox(card)
-        form = tk.Frame(card, bg=self.colors['card']);
-        form.pack(fill='x', pady=10);
+        card.rowconfigure(0, weight=1)
+        card.columnconfigure(0, weight=1)
+
+        list_frame, self.groups_listbox = self.mk_listbox(card)
+        self.groups_listbox.config(selectmode='extended')
+        list_frame.grid(row=0, column=0, sticky='nsew', pady=(0, 15))
+
+        form = tk.Frame(card, bg=self.colors['card'])
+        form.grid(row=1, column=0, sticky='ew', pady=12)
         form.columnconfigure(1, weight=1)
-        for i, (text, name) in enumerate(
-                [("ID:", "group_id_entry"), ("Название:", "group_name_entry"), ("Кабинет:", "group_cabinet_entry")]):
-            self.mk_label(form, text, bold=True).grid(row=i, column=0, sticky='w', pady=4)
-            setattr(self, name, self.mk_entry(form));
-            getattr(self, name).grid(row=i, column=1, sticky='ew', pady=4, padx=(10, 0))
-        btns = tk.Frame(card, bg=self.colors['card']);
-        btns.pack(fill='x', pady=10)
-        self.create_button(btns, "➕", self.add_group, variant='success', width=5).pack(side='left', expand=True,
-                                                                                       fill='x', padx=2)
-        self.create_button(btns, "✏️", lambda: self.edit_item_tags('group'), variant='primary', width=5).pack(
-            side='left', expand=True, fill='x', padx=2)
-        self.create_button(btns, "❌", self.delete_group, variant='danger', width=5).pack(side='left', expand=True,
-                                                                                         fill='x', padx=2)
+
+        fields = [("ID:", "group_id_entry"), ("Название TG:", "group_name_entry"),
+                  ("Номер клиента:", "group_client_entry")]
+        for i, (text, name) in enumerate(fields):
+            self.mk_label(form, text, bold=True).grid(row=i, column=0, sticky='w', pady=6, padx=(0, 10))
+            entry = self.mk_entry(form)
+            entry.grid(row=i, column=1, sticky='ew', pady=6)
+            setattr(self, name, entry)
+
+        btns = tk.Frame(card, bg=self.colors['card'])
+        btns.grid(row=2, column=0, sticky='ew', pady=12)
+        btns.columnconfigure((0, 1, 2, 3), weight=1)
+        self.create_button(btns, "➕", self.add_group, variant='success').grid(row=0, column=0, sticky='ew', padx=2)
+        self.create_button(btns, "✏️", lambda: self.edit_item('group'), variant='primary').grid(row=0, column=1,
+                                                                                                sticky='ew', padx=2)
+        self.create_button(btns, "🛠", lambda: self._edit_item_template_dialog('group'), variant='secondary').grid(row=0,
+                                                                                                                  column=2,
+                                                                                                                  sticky='ew',
+                                                                                                                  padx=2)
+        self.create_button(btns, "✖", self.delete_group, variant='danger').grid(row=0, column=3, sticky='ew', padx=2)
         return card
 
+    # Manage: UI component for themes
     def create_themes_manager(self, parent):
         card = self.create_card(parent, "🧵  Управление темами")
-        self.themes_listbox = self.mk_listbox(card)
-        form = tk.Frame(card, bg=self.colors['card']);
-        form.pack(fill='x', pady=10);
+        card.rowconfigure(0, weight=1)
+        card.columnconfigure(0, weight=1)
+
+        list_frame, self.themes_listbox = self.mk_listbox(card)
+        self.themes_listbox.config(selectmode='extended')
+        list_frame.grid(row=0, column=0, sticky='nsew', pady=(0, 15))
+
+        form = tk.Frame(card, bg=self.colors['card'])
+        form.grid(row=1, column=0, sticky='ew', pady=12)
         form.columnconfigure(1, weight=1)
-        for i, (text, name) in enumerate([("ID группы:", "theme_group_id_entry"), ("ID темы:", "theme_topic_id_entry"),
-                                          ("Название:", "theme_name_entry"), ("Кабинет:", "theme_cabinet_entry")]):
-            self.mk_label(form, text, bold=True).grid(row=i, column=0, sticky='w', pady=4)
-            setattr(self, name, self.mk_entry(form));
-            getattr(self, name).grid(row=i, column=1, sticky='ew', pady=4, padx=(10, 0))
-        btns = tk.Frame(card, bg=self.colors['card']);
-        btns.pack(fill='x', pady=10)
-        self.create_button(btns, "➕", self.add_theme, variant='success', width=5).pack(side='left', expand=True,
-                                                                                       fill='x', padx=2)
-        self.create_button(btns, "✏️", lambda: self.edit_item_tags('theme'), variant='primary', width=5).pack(
-            side='left', expand=True, fill='x', padx=2)
-        self.create_button(btns, "❌", self.delete_theme, variant='danger', width=5).pack(side='left', expand=True,
-                                                                                         fill='x', padx=2)
+
+        fields = [("ID группы:", "theme_group_id_entry"), ("ID темы:", "theme_topic_id_entry"),
+                  ("Название:", "theme_name_entry"), ("Номер клиента:", "theme_client_entry")]
+        for i, (text, name) in enumerate(fields):
+            self.mk_label(form, text, bold=True).grid(row=i, column=0, sticky='w', pady=6, padx=(0, 10))
+            entry = self.mk_entry(form)
+            entry.grid(row=i, column=1, sticky='ew', pady=6)
+            setattr(self, name, entry)
+
+        btns = tk.Frame(card, bg=self.colors['card'])
+        btns.grid(row=2, column=0, sticky='ew', pady=12)
+        btns.columnconfigure((0, 1, 2, 3), weight=1)
+        self.create_button(btns, "➕", self.add_theme, variant='success').grid(row=0, column=0, sticky='ew', padx=2)
+        self.create_button(btns, "✏️", lambda: self.edit_item('theme'), variant='primary').grid(row=0, column=1,
+                                                                                                sticky='ew', padx=2)
+        self.create_button(btns, "🛠", lambda: self._edit_item_template_dialog('theme'), variant='secondary').grid(row=0,
+                                                                                                                  column=2,
+                                                                                                                  sticky='ew',
+                                                                                                                  padx=2)
+        self.create_button(btns, "✖", self.delete_theme, variant='danger').grid(row=0, column=3, sticky='ew', padx=2)
         return card
 
+    # -- Fetch Page: UI --
     def create_fetch_tab(self, parent):
-        container = tk.Frame(parent, bg=self.colors['bg']);
-        container.place(relx=0.5, rely=0.5, anchor='center')
-        card = self.create_card(container, "📥  Получить список всех групп");
-        card.pack(padx=40, pady=20)
-        self.fetch_btn = self.create_button(card, "🔄  Загрузить мои группы", self.fetch_user_groups, variant='primary')
-        self.fetch_btn.pack(pady=20)
-        self.fetched_groups_listbox = self.mk_listbox(card);
-        self.fetched_groups_listbox.config(selectmode='multiple', width=70)
-        self.create_button(card, "➕  Добавить выбранные в список", self.add_fetched_groups, variant='success').pack(
-            pady=15)
+        """
+        Создает вкладку для загрузки групп и тем. Элементы располагаются горизонтально и занимают по 50% ширины
+        экрана, обеспечивая удобное сравнение и доступ к обеим карточкам одновременно.
+        """
+        # базовая конфигурация и прокручиваемая область
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        container, scrollable_frame = self._create_scrollable_area(parent)
+        container.grid(row=0, column=0, sticky='nsew')
 
-    def create_topic_checker_tab(self, parent):
-        container = tk.Frame(parent, bg=self.colors['bg']);
-        container.place(relx=0.5, rely=0.5, anchor='center')
-        card = self.create_card(container, "🔎  Получить темы из группы-форума");
-        card.pack(padx=40, pady=20, fill='x')
-        self.mk_label(card, "Выберите группу-форум:", bold=True).pack(anchor='w', pady=(0, 5))
-        self.topic_check_group_combo = self.mk_combobox(card, state="readonly", font=('Segoe UI', 10))
-        self.topic_check_group_combo.pack(fill='x', pady=(0, 15))
-        self.fetch_topics_btn = self.create_button(card, "🔍  Получить темы", self.fetch_group_topics, variant='primary')
-        self.fetch_topics_btn.pack(pady=10)
-        self.fetched_topics_listbox = self.mk_listbox(card);
-        self.fetched_topics_listbox.config(selectmode='multiple', width=70)
-        self.create_button(card, "➕  Добавить выбранные темы в список", self.add_fetched_topics,
-                           variant='success').pack(pady=15)
+        # контейнер для карточек, две колонки по 50%
+        content_container = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        content_container.grid(row=0, column=0, sticky='nsew', padx=20, pady=20)
+        content_container.grid_columnconfigure(0, weight=1)
+        content_container.grid_columnconfigure(1, weight=1)
+        content_container.grid_rowconfigure(0, weight=1)
 
+        # --- Карточка: получение списка групп ---
+        groups_card = self.create_card(content_container, "📥  Получить список всех групп")
+        groups_card.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
+        groups_card.columnconfigure(0, weight=1)
+        groups_card.rowconfigure(2, weight=1)
+
+        tk.Label(groups_card, text="Загрузите список ваших Telegram групп и каналов",
+                 bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9, 'italic')).grid(
+            row=0, column=0, pady=(0, 15))
+        self.fetch_btn = self.create_button(groups_card, "🔄  Загрузить мои группы", self.fetch_user_groups,
+                                            variant='primary')
+        self.fetch_btn.grid(row=1, column=0, pady=20)
+
+        list_frame_g, self.fetched_groups_listbox = self.mk_listbox(groups_card)
+        self.fetched_groups_listbox.config(selectmode='extended')
+        list_frame_g.grid(row=2, column=0, sticky='nsew')
+
+        tk.Label(groups_card, text="💡 Выберите несколько групп (Shift/Ctrl)",
+                 bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9)).grid(
+            row=3, column=0, pady=(5, 15))
+        self.create_button(groups_card, "➕  Добавить выбранные", self.add_fetched_groups,
+                           variant='success').grid(row=4, column=0, pady=15, sticky='ew')
+
+        # --- Карточка: поиск тем в группах ---
+        topics_card = self.create_card(content_container, "🔎  Получить темы из групп-форумов")
+        topics_card.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
+        topics_card.columnconfigure(0, weight=1)
+        topics_card.rowconfigure(2, weight=1)
+
+        tk.Label(topics_card, text="Найдите доступные темы во всех группах-форумах",
+                 bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9, 'italic')).grid(
+            row=0, column=0, pady=(0, 15))
+        self.fetch_topics_btn = self.create_button(topics_card, "🔍  Найти темы", self.fetch_all_group_topics,
+                                                   variant='primary')
+        self.fetch_topics_btn.grid(row=1, column=0, pady=15)
+
+        list_frame_t, self.fetched_topics_listbox = self.mk_listbox(topics_card)
+        self.fetched_topics_listbox.config(selectmode='extended')
+        list_frame_t.grid(row=2, column=0, sticky='nsew')
+
+        tk.Label(topics_card, text="💡 Выберите темы для добавления",
+                 bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9)).grid(
+            row=3, column=0, pady=(5, 15))
+        self.create_button(topics_card, "➕  Добавить выбранные темы", self.add_fetched_topics,
+                           variant='success').grid(row=4, column=0, pady=15, sticky='ew')
+
+    # -- Sending Page: UI --
     def create_sending_tab(self, parent):
-        main = tk.Frame(parent, bg=self.colors['bg']);
-        main.pack(fill='both', expand=True, padx=20, pady=20)
-        self.left_col_sending = tk.Frame(main, bg=self.colors['bg']);
-        self.left_col_sending.pack(side='left', fill='both', expand=True, padx=(0, 10))
-        right = tk.Frame(main, bg=self.colors['bg']);
-        right.pack(side='right', fill='both', expand=True, padx=(10, 0))
+        """
+        Создает вкладку отправки сообщений. Размещает все элементы в одной вертикальной колонке с прокруткой,
+        чтобы содержимое адаптировалось к изменению размеров окна и занимало всю доступную ширину.
+        """
+        # базовая конфигурация и прокручиваемая область
+        parent.grid_rowconfigure(0, weight=1)
+        parent.grid_columnconfigure(0, weight=1)
+        container, scrollable_frame = self._create_scrollable_area(parent)
+        container.grid(row=0, column=0, sticky='nsew')
+        scrollable_frame.grid_columnconfigure(0, weight=1)
 
-        templates_card = self.create_card(right, "📝  Шаблоны сообщений");
-        templates_card.pack(fill='x', pady=(0, 10))
+        # --- Секция выбора получателей (фильтр, списки групп и тем) ---
+        # Используем отдельную карточку с заголовком, внутри которой размещается фильтр по тегам и списки групп/тем.
+        lists_card = self.create_card(scrollable_frame, "📋  Выбор получателей")
+        lists_card.grid(row=0, column=0, sticky='nsew', padx=16, pady=(16, 12))
+        # Row 0 растягивается вместе с другими секциями, чтобы карточка занимала достаточную высоту
+        scrollable_frame.grid_rowconfigure(0, weight=1)
+        # сохраняем для обновления при изменении данных
+        self.lists_card_sending = lists_card
+        self.build_sending_lists(self.lists_card_sending)
+
+        # --- Шаблоны сообщений ---
+        templates_card = self.create_card(scrollable_frame, "📝  Шаблоны сообщений")
+        templates_card.grid(row=1, column=0, sticky='ew', padx=16, pady=(0, 12))
         self.create_templates_manager(templates_card)
 
-        msg_card = self.create_card(right, "✉️  Текст сообщения");
-        msg_card.pack(fill='both', expand=True, pady=(0, 10))
-        self.message_text = self.mk_text(msg_card, height=10);
-        self.message_text.pack(fill='both', expand=True)
+        # --- Текст сообщения ---
+        msg_card = self.create_card(scrollable_frame, "✉️  Текст сообщения")
+        msg_card.grid(row=2, column=0, sticky='ew', padx=16, pady=(0, 12))
+        msg_card.columnconfigure(0, weight=1)
+        msg_card.rowconfigure(2, weight=1)
 
-        self.send_btn = self.create_button(right, "📨  Отправить сообщения", self.prepare_send, variant='success')
-        self.send_btn.config(width=20)
-        self.send_btn.pack(pady=10, fill='x')
+        char_counter_frame = tk.Frame(msg_card, bg=self.colors['card'])
+        char_counter_frame.grid(row=0, column=0, sticky='ew', pady=(0, 5))
+        self.char_counter = tk.Label(char_counter_frame, text="Символов: 0",
+                                     bg=self.colors['card'], fg=self.colors['text_muted'],
+                                     font=('Segoe UI', 9))
+        self.char_counter.grid(row=0, column=0, sticky='e')
 
-        log_card = self.create_card(right, "📊  Лог отправки");
-        log_card.pack(fill='both', expand=True)
-        self.log_text = scrolledtext.ScrolledText(log_card, height=8, state='disabled', font=('Consolas', 9),
-                                                  bg=self.colors['input_bg'], fg=self.colors['text'], relief='solid',
-                                                  bd=1)
-        self.log_text.pack(fill='both', expand=True)
+        self.var_buttons_frame = tk.Frame(msg_card, bg=self.colors['card'])
+        self.var_buttons_frame.grid(row=1, column=0, sticky='w', pady=(0, 5))
 
+        text_frame, self.message_text = self.mk_text(msg_card)
+        text_frame.grid(row=2, column=0, sticky='nsew')
+        self.message_text.bind('<KeyRelease>', self.update_char_counter)
+
+        # --- Параметры ---
+        params_card = self.create_card(scrollable_frame, "🔧  Параметры")
+        params_card.grid(row=3, column=0, sticky='ew', padx=16, pady=(0, 12))
+        self.parameters = [{'name_var': tk.StringVar(value=str(i)), 'value_var': tk.StringVar()}
+                           for i in range(1, 5)]
+        self.param_frame = params_card
+        self.build_params_section(self.param_frame)
+
+        # --- Вложения ---
+        attachments_card = self.create_card(scrollable_frame, "📎  Вложения")
+        attachments_card.grid(row=4, column=0, sticky='ew', padx=16, pady=(0, 12))
+        attachments_card.columnconfigure(0, weight=1)
+        attachments_card.rowconfigure(1, weight=1)
+
+        attach_btn_frame = tk.Frame(attachments_card, bg=self.colors['card'])
+        attach_btn_frame.grid(row=0, column=0, sticky='ew', pady=(0, 8))
+        attach_btn_frame.columnconfigure((0, 1), weight=1)
+        self.create_button(attach_btn_frame, "📂  Добавить файлы", self.add_attachments,
+                           variant='primary').grid(row=0, column=0, sticky='ew', padx=(0, 4))
+        self.create_button(attach_btn_frame, "✖  Удалить выбранные", self.remove_attachments,
+                           variant='danger').grid(row=0, column=1, sticky='ew', padx=(4, 0))
+
+        list_frame, self.attachments_listbox = self.mk_listbox(attachments_card)
+        list_frame.grid(row=1, column=0, sticky='nsew')
+        self.attachments_listbox.config(selectmode='extended')
+        self.attachments = []
+
+        # --- Кнопка отправки ---
+        self.send_btn = self.create_button(scrollable_frame, "📨  Отправить сообщения", self.prepare_send,
+                                           variant='success')
+        self.send_btn.grid(row=5, column=0, padx=16, pady=12, sticky='ew')
+
+        # --- Лог отправки ---
+        progress_card = self.create_card(scrollable_frame, "📊  Лог отправки")
+        progress_card.grid(row=6, column=0, sticky='nsew', padx=16, pady=(0, 16))
+        progress_card.columnconfigure(0, weight=1)
+        progress_card.rowconfigure(0, weight=1)
+
+        log_frame, self.log_text = self.mk_text(progress_card)
+        self.log_text.config(state='disabled', font=('Consolas', 9))
+        log_frame.grid(row=0, column=0, sticky='nsew')
+
+    def update_char_counter(self, event=None):
+        count = len(self.message_text.get("1.0", tk.END).strip())
+        self.char_counter.config(text=f"Символов: {count}")
+
+    def insert_message_var(self, var):
+        self.message_text.insert(tk.INSERT, var)
+        self.message_text.focus_set()
+        self.update_char_counter()
+
+    # Sending: Builds the parameters section UI
+    def build_params_section(self, parent):
+        for w in parent.winfo_children():
+            if w.winfo_class() != 'Labelframe': w.destroy()
+
+        rows_frame = tk.Frame(parent, bg=self.colors['card'])
+        rows_frame.grid(row=0, column=0, sticky='ew')
+        parent.columnconfigure(0, weight=1)
+
+        for idx, param in enumerate(self.parameters):
+            row = tk.Frame(rows_frame, bg=self.colors['card'])
+            row.grid(row=idx, column=0, sticky='ew', pady=4, padx=4)
+            row.columnconfigure(1, weight=1)
+
+            name_entry = self.mk_entry(row, textvariable=param['name_var'])
+            name_entry.grid(row=0, column=0, padx=(0, 4))
+
+            value_entry = self.mk_entry(row, textvariable=param['value_var'])
+            value_entry.grid(row=0, column=1, padx=(0, 4), sticky='ew')
+
+            placeholder_button = self.create_button(row, f"[{param['name_var'].get()}]",
+                                                    lambda p=param: self.insert_message_var(f"[{p['name_var'].get()}]"),
+                                                    variant='secondary')
+            placeholder_button.grid(row=0, column=2, padx=(0, 4))
+
+            if len(self.parameters) > 1:
+                remove_btn = self.create_button(row, "✖", lambda i=idx: self.remove_parameter(i), variant='danger')
+                remove_btn.grid(row=0, column=3)
+
+            def on_name_change(*_args, var=param['name_var'], btn=placeholder_button):
+                new_text = f"[{var.get()}]"
+                btn.config(text=new_text)
+                btn.configure(command=lambda v=var: self.insert_message_var(f"[{v.get()}]"))
+                self.refresh_var_buttons()
+
+            param['name_var'].trace_add('write', on_name_change)
+
+        add_btn = self.create_button(parent, "➕ Добавить параметр", self.add_parameter, variant='secondary')
+        add_btn.grid(row=1, column=0, pady=8, padx=4, sticky='w')
+        self.refresh_var_buttons()
+
+    def add_parameter(self):
+        existing = {p['name_var'].get() for p in self.parameters}
+        name = f"param{len(existing) + 1}"
+        while name in existing:
+            name = f"{name}_"
+        self.parameters.append({'name_var': tk.StringVar(value=name), 'value_var': tk.StringVar()})
+        self.build_params_section(self.param_frame)
+
+    def remove_parameter(self, index):
+        if 0 <= index < len(self.parameters):
+            del self.parameters[index]
+            self.build_params_section(self.param_frame)
+
+    def refresh_var_buttons(self):
+        for widget in self.var_buttons_frame.winfo_children():
+            widget.destroy()
+        for i, param in enumerate(self.parameters):
+            name = param['name_var'].get()
+            placeholder = f"[{name}]"
+            btn = self.create_button(self.var_buttons_frame, placeholder,
+                                     lambda p=placeholder: self.insert_message_var(p), variant='secondary')
+            btn.grid(row=0, column=i, padx=4)
+
+    def replace_vars(self, text: str) -> str:
+        for param in self.parameters:
+            name = param['name_var'].get()
+            value = param['value_var'].get()
+            text = text.replace(f"[{name}]", value)
+        return text
+
+    def add_attachments(self):
+        paths = filedialog.askopenfilenames(title="Выберите файлы для прикрепления")
+        if not paths: return
+        for p in paths:
+            if p and p not in self.attachments:
+                self.attachments.append(p)
+                self.attachments_listbox.insert(tk.END, os.path.basename(p))
+
+    def remove_attachments(self):
+        for idx in sorted(self.attachments_listbox.curselection(), reverse=True):
+            self.attachments_listbox.delete(idx)
+            self.attachments.pop(idx)
+
+    # Sending: UI component for managing templates
     def create_templates_manager(self, parent):
-        self.templates_listbox = self.mk_listbox(parent, height=5)
-        btns = tk.Frame(parent, bg=self.colors['card']);
-        btns.pack(fill='x', pady=10)
-        self.create_button(btns, "📥", self.use_template, variant='primary', width=5).pack(side='left', expand=True,
-                                                                                          fill='x', padx=2)
-        self.create_button(btns, "💾", self.save_template, variant='success', width=5).pack(side='left', expand=True,
-                                                                                           fill='x', padx=2)
-        self.create_button(btns, "❌", self.delete_template, variant='danger', width=5).pack(side='left', expand=True,
-                                                                                            fill='x', padx=2)
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
 
+        list_frame, self.templates_listbox = self.mk_listbox(parent)
+        list_frame.grid(row=0, column=0, sticky='nsew', pady=(0, 15))
+
+        btns = tk.Frame(parent, bg=self.colors['card'])
+        btns.grid(row=1, column=0, sticky='ew', pady=12)
+        btns.columnconfigure((0, 1, 2), weight=1)
+
+        self.create_button(btns, "📥", self.use_template, variant='primary').grid(row=0, column=0, sticky='ew', padx=3)
+        self.create_button(btns, "💾", self.save_template, variant='success').grid(row=0, column=1, sticky='ew', padx=3)
+        self.create_button(btns, "✖", self.delete_template, variant='danger').grid(row=0, column=2, sticky='ew', padx=3)
+
+    # Sending: Builds the tag filter and group/theme selection UI
     def build_sending_lists(self, parent):
         for w in parent.winfo_children(): w.destroy()
-        tags_card = self.create_card(parent, "🏷️  Фильтр по тегам");
-        tags_card.pack(fill='x', pady=(0, 10))
-        tags_outer = tk.Frame(tags_card, bg=self.colors['tag_filter_bg'], bd=1, relief='solid', borderwidth=0)
-        tags_outer.pack(fill='x', pady=5, padx=0)
-        tags_frame = tk.Frame(tags_outer, bg=self.colors['tag_filter_bg']);
-        tags_frame.pack(fill='x', padx=5, pady=5)
+        parent.rowconfigure(1, weight=1)
+        parent.columnconfigure(0, weight=1)
+
+        tags_card = self.create_card(parent, "🏷️  Фильтр по тегам")
+        tags_card.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+        tags_card.columnconfigure(0, weight=1)
+        tags_outer = tk.Frame(tags_card, bg=self.colors['tag_filter_bg'], relief='flat')
+        tags_outer.grid(row=0, column=0, sticky='ew', pady=8, padx=0)
+        tags_outer.columnconfigure(0, weight=1)
+        tags_frame = tk.Frame(tags_outer, bg=self.colors['tag_filter_bg'])
+        tags_frame.grid(row=0, column=0, sticky='w', padx=12, pady=12)
 
         self.tag_filter_vars = []
         self.all_tags_var = tk.BooleanVar(value=True)
 
         def toggle_all_tags():
-            is_checked = self.all_tags_var.get()
-            for var, _ in self.tag_filter_vars:
-                var.set(is_checked)
+            for var, _ in self.tag_filter_vars: var.set(self.all_tags_var.get())
             self.filter_sending_lists()
 
         def update_all_tags_state():
-            all_checked = all(var.get() for var, _ in self.tag_filter_vars) if self.tag_filter_vars else True
-            self.all_tags_var.set(all_checked)
+            self.all_tags_var.set(all(var.get() for var, _ in self.tag_filter_vars))
             self.filter_sending_lists()
 
-        all_cb = tk.Checkbutton(tags_frame, text="Все", variable=self.all_tags_var, command=toggle_all_tags,
-                                font=('Segoe UI', 9, 'bold'), bg=self.colors['tag_filter_bg'], fg=self.colors['text'],
-                                selectcolor='#e5e7eb', activebackground=self.colors['tag_filter_bg'],
-                                activeforeground=self.colors['text'])
-        all_cb.pack(side='left', padx=5)
+        all_cb = self.mk_checkbutton(tags_frame, "Все", self.all_tags_var)
+        all_cb.config(command=toggle_all_tags, font=('Segoe UI', 10, 'bold'), fg=self.colors['primary'],
+                      activeforeground=self.colors['primary'])
+        all_cb.grid(row=0, column=0, padx=8)
 
-        for tag in self.app_data["tags"]:
-            var = tk.BooleanVar(value=True);
+        for i, tag in enumerate(self.app_data["tags"]):
+            var = tk.BooleanVar(value=True)
             self.tag_filter_vars.append((var, tag))
-            cb = self.mk_checkbutton(tags_frame, tag, var, bg_card=False)
+            cb = self.mk_checkbutton(tags_frame, tag, var)
             cb.config(command=update_all_tags_state)
-            cb.pack(side='left', padx=5)
+            cb.grid(row=0, column=i + 1, padx=8)
 
-        self.scrollable_groups_frame_container = self.create_card(parent, "📁  Выбор групп");
-        self.scrollable_groups_frame_container.pack(fill='both', expand=True, pady=(0, 10))
-        self.scrollable_themes_frame_container = self.create_card(parent, "🧵  Выбор тем");
-        self.scrollable_themes_frame_container.pack(fill='both', expand=True)
+        lists_container = tk.Frame(parent, bg=self.colors['bg'])
+        lists_container.grid(row=1, column=0, sticky='nsew', pady=(0, 12))
+        lists_container.grid_columnconfigure((0, 1), weight=1)
+        lists_container.grid_rowconfigure(0, weight=1)
 
-        btn_select = tk.Frame(parent, bg=self.colors['bg']);
-        btn_select.pack(fill='x', pady=10)
-        self.create_button(btn_select, "✓", self.select_all, variant='primary', width=10).pack(side='left', padx=5,
-                                                                                               expand=True, fill='x')
-        self.create_button(btn_select, "✗", self.deselect_all, variant='secondary', width=10).pack(side='left', padx=5,
-                                                                                                   expand=True,
-                                                                                                   fill='x')
+        self.groups_card_sending = self.create_card(lists_container, "📁  Выбор групп")
+        self.themes_card_sending = self.create_card(lists_container, "🧵  Выбор тем")
+        self.groups_card_sending.grid(row=0, column=0, sticky='nsew', padx=(0, 8))
+        self.themes_card_sending.grid(row=0, column=1, sticky='nsew', padx=(8, 0))
+
+        btn_select = tk.Frame(parent, bg=self.colors['bg'])
+        btn_select.grid(row=2, column=0, sticky='ew', pady=12)
+        btn_select.columnconfigure((0, 1), weight=1)
+        self.create_button(btn_select, "✓  Выбрать все", self.select_all, variant='primary').grid(row=0, column=0,
+                                                                                                  sticky='ew',
+                                                                                                  padx=(0, 5))
+        self.create_button(btn_select, "✗  Снять выбор", self.deselect_all, variant='secondary').grid(row=0, column=1,
+                                                                                                      sticky='ew',
+                                                                                                      padx=(5, 0))
 
         self.filter_sending_lists()
 
     def filter_sending_lists(self):
         active_tags = {tag for var, tag in getattr(self, 'tag_filter_vars', []) if var.get()}
-        show_all = self.all_tags_var.get() if hasattr(self, 'all_tags_var') else True
 
-        for container in [self.scrollable_groups_frame_container, self.scrollable_themes_frame_container]:
-            for widget in container.winfo_children(): widget.destroy()
+        def populate(card, items, is_group):
+            for widget in card.winfo_children():
+                widget.destroy()
 
-        def populate(container, items, is_group):
-            canvas = tk.Canvas(container, bg=self.colors['card'], highlightthickness=0)
-            scrollbar = tk.Scrollbar(container, orient='vertical', command=canvas.yview)
-            inner = tk.Frame(canvas, bg=self.colors['card'])
-            inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-            canvas.create_window((0, 0), window=inner, anchor='nw');
-            canvas.configure(yscrollcommand=scrollbar.set)
-            self._bind_mousewheel(inner, canvas)
+            card.grid_rowconfigure(0, weight=1)
+            card.grid_columnconfigure(0, weight=1)
+            container, scrollable_area = self._create_scrollable_area(card)
+            container.grid(row=0, column=0, sticky='nsew')
 
             item_vars = []
-            count_added = 0
-            for item in items:
-                item_tags = set(item.get('tags', []))
-                if show_all or (active_tags and item_tags.intersection(active_tags)):
+            for i, item in enumerate(items):
+                if not active_tags or set(item.get('tags', [])).intersection(active_tags):
                     var = tk.BooleanVar()
                     item_vars.append((var, item))
-                    label = f"{item['name']} - Каб. {item.get('cabinet', 'N/A')}"
-                    self.mk_checkbutton(inner, label, var, bg_card=True).pack(anchor='w', pady=3, padx=5)
-                    count_added += 1
+                    label = f"{item['name']} - Клиент: {item.get('client_number', 'N/A')}"
+                    cb = self.mk_checkbutton(scrollable_area, label, var)
+                    cb.grid(row=i, column=0, sticky='w', pady=2, padx=8)
 
-            if count_added == 0:
-                self.mk_label(inner, "Нет элементов под выбранные теги", bold=False,
-                              color=self.colors['text_light']).pack(pady=8, padx=8, anchor='w')
+            if not item_vars:
+                self.mk_label(scrollable_area, "Нет элементов", color=self.colors['text_muted']).grid(row=0, column=0,
+                                                                                                      pady=20, padx=20)
 
-            canvas.pack(side='left', fill='both', expand=True);
-            scrollbar.pack(side='right', fill='y')
             if is_group:
                 self.group_vars = item_vars
             else:
                 self.theme_vars = item_vars
 
-        populate(self.scrollable_groups_frame_container, self.app_data["groups"], True)
-        populate(self.scrollable_themes_frame_container, self.app_data["themes"], False)
+        populate(self.groups_card_sending, self.app_data["groups"], True)
+        populate(self.themes_card_sending, self.app_data["themes"], False)
 
-    # ---------- ДАННЫЕ/ЛОГИКА ----------
     def refresh_all_lists(self):
-        self.tags_listbox.delete(0, tk.END)
-        for tag in self.app_data["tags"]: self.tags_listbox.insert(tk.END, tag)
-        self.groups_listbox.delete(0, tk.END)
-        for g in self.app_data["groups"]: self.groups_listbox.insert(tk.END, f"{g['name']} | ID: {g['id']}")
-        self.themes_listbox.delete(0, tk.END)
-        for t in self.app_data["themes"]: self.themes_listbox.insert(tk.END, f"{t['name']} | Группа: {t['group_id']}")
-        self.templates_listbox.delete(0, tk.END)
-        for tpl in self.app_data["templates"]: self.templates_listbox.insert(tk.END, tpl["name"])
+        for listbox, items, formatter in [
+            (self.tags_listbox, self.app_data["tags"], lambda t: t),
+            (self.groups_listbox, self.app_data["groups"], lambda g: f"{g['name']} | ID: {g['id']}"),
+            (self.themes_listbox, self.app_data["themes"], lambda t: f"{t['name']} | Группа: {t['group_id']}"),
+            (self.templates_listbox, self.app_data["templates"], lambda t: t["name"])
+        ]:
+            listbox.delete(0, tk.END)
+            for item in items:
+                listbox.insert(tk.END, formatter(item))
 
-        self.group_name_to_id_map = {f"{g['name']} (ID: {g['id']})": g['id'] for g in self.app_data["groups"]}
-        self.topic_check_group_combo['values'] = list(self.group_name_to_id_map.keys())
+        # если уже создан раздел с получателями, обновляем его
+        if hasattr(self, 'lists_card_sending'):
+            self.build_sending_lists(self.lists_card_sending)
 
-        self.build_sending_lists(self.left_col_sending)
-
+    # -- Manage Page Logic --
     def add_tag(self):
         tag_name = self.tag_name_entry.get().strip()
         if not tag_name: return messagebox.showwarning("Внимание", "Название тега не может быть пустым!")
         if tag_name in self.app_data["tags"]: return messagebox.showwarning("Внимание", "Такой тег уже существует.")
-        self.app_data["tags"].append(tag_name);
-        save_app_data(self.app_data);
+        self.app_data["tags"].append(tag_name)
+        save_app_data(self.app_data)
         self.refresh_all_lists()
-        self.tag_name_entry.delete(0, tk.END);
+        self.tag_name_entry.delete(0, tk.END)
         messagebox.showinfo("Успех", "Тег добавлен!")
 
     def delete_tag(self):
@@ -734,21 +993,29 @@ class TelegramSenderApp:
                                f"Удалить тег '{tag_to_delete}'? Он также будет удален из всех групп и тем."):
             del self.app_data["tags"][sel[0]]
             for item in self.app_data["groups"] + self.app_data["themes"]:
-                if "tags" in item and tag_to_delete in item["tags"]: item["tags"].remove(tag_to_delete)
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
+                if "tags" in item and tag_to_delete in item["tags"]:
+                    item["tags"].remove(tag_to_delete)
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
             messagebox.showinfo("Успех", "Тег удален!")
 
     def add_group(self):
         try:
-            gid = int(self.group_id_entry.get().strip());
-            name = self.group_name_entry.get().strip();
-            cab = self.group_cabinet_entry.get().strip()
+            gid, name = int(self.group_id_entry.get()), self.group_name_entry.get().strip()
+            client_num = self.group_client_entry.get().strip()
             if not name: return messagebox.showwarning("Внимание", "Укажите название группы!")
-            self.app_data["groups"].append({"id": gid, "name": name, "cabinet": cab, "tags": []})
-            save_app_data(self.app_data);
+
+            tag_input = simpledialog.askstring("Назначить теги", f"Введите теги для группы '{name}' через запятую:",
+                                               parent=self.root)
+            tags = [t.strip() for t in tag_input.split(',') if t.strip()] if tag_input else []
+            for t in tags:
+                if t not in self.app_data["tags"]: self.app_data["tags"].append(t)
+
+            self.app_data["groups"].append(
+                {"id": gid, "name": name, "client_number": client_num, "tags": tags, "custom_templates": {}})
+            save_app_data(self.app_data)
             self.refresh_all_lists()
-            for e in [self.group_id_entry, self.group_name_entry, self.group_cabinet_entry]: e.delete(0, tk.END)
+            for e in [self.group_id_entry, self.group_name_entry, self.group_client_entry]: e.delete(0, tk.END)
             messagebox.showinfo("Успех", "Группа добавлена!")
         except ValueError:
             messagebox.showerror("Ошибка", "ID группы должен быть числом!")
@@ -757,23 +1024,30 @@ class TelegramSenderApp:
         sel = self.groups_listbox.curselection()
         if not sel: return messagebox.showwarning("Внимание", "Выберите группу для удаления!")
         if messagebox.askyesno("Подтверждение", "Удалить выбранную группу?"):
-            del self.app_data["groups"][sel[0]];
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
+            del self.app_data["groups"][sel[0]]
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
             messagebox.showinfo("Успех", "Группа удалена!")
 
     def add_theme(self):
         try:
-            gid = int(self.theme_group_id_entry.get().strip());
-            tid = int(self.theme_topic_id_entry.get().strip())
-            name = self.theme_name_entry.get().strip();
-            cab = self.theme_cabinet_entry.get().strip()
+            gid, tid = int(self.theme_group_id_entry.get()), int(self.theme_topic_id_entry.get())
+            name, client_num = self.theme_name_entry.get().strip(), self.theme_client_entry.get().strip()
             if not name: return messagebox.showwarning("Внимание", "Укажите название темы!")
-            self.app_data["themes"].append({"group_id": gid, "topic_id": tid, "name": name, "cabinet": cab, "tags": []})
-            save_app_data(self.app_data);
+
+            tag_input = simpledialog.askstring("Назначить теги", f"Введите теги для темы '{name}' через запятую:",
+                                               parent=self.root)
+            tags = [t.strip() for t in tag_input.split(',') if t.strip()] if tag_input else []
+            for t in tags:
+                if t not in self.app_data["tags"]: self.app_data["tags"].append(t)
+
+            self.app_data["themes"].append(
+                {"group_id": gid, "topic_id": tid, "name": name, "client_number": client_num, "tags": tags,
+                 "custom_templates": {}})
+            save_app_data(self.app_data)
             self.refresh_all_lists()
             for e in [self.theme_group_id_entry, self.theme_topic_id_entry, self.theme_name_entry,
-                      self.theme_cabinet_entry]: e.delete(0, tk.END)
+                      self.theme_client_entry]: e.delete(0, tk.END)
             messagebox.showinfo("Успех", "Тема добавлена!")
         except ValueError:
             messagebox.showerror("Ошибка", "ID группы и темы должны быть числами!")
@@ -782,12 +1056,12 @@ class TelegramSenderApp:
         sel = self.themes_listbox.curselection()
         if not sel: return messagebox.showwarning("Внимание", "Выберите тему для удаления!")
         if messagebox.askyesno("Подтверждение", "Удалить выбранную тему?"):
-            del self.app_data["themes"][sel[0]];
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
+            del self.app_data["themes"][sel[0]]
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
             messagebox.showinfo("Успех", "Тема удалена!")
 
-    def edit_item_tags(self, item_type):
+    def edit_item(self, item_type):
         listbox = self.groups_listbox if item_type == 'group' else self.themes_listbox
         data_list = self.app_data["groups"] if item_type == 'group' else self.app_data["themes"]
         sel = listbox.curselection()
@@ -795,66 +1069,163 @@ class TelegramSenderApp:
                                                   f"Выберите {'группу' if item_type == 'group' else 'тему'} для редактирования!")
         item = data_list[sel[0]]
 
-        dialog = tk.Toplevel(self.root);
-        dialog.title("Редактировать теги");
-        dialog.configure(bg=self.colors['bg']);
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Редактирование {item_type}")
+        dialog.configure(bg=self.colors['bg'])
         dialog.transient(self.root);
         dialog.grab_set()
-        self.mk_label(dialog, f"Теги для '{item['name']}'", bold=True, color=self.colors['text']).pack(pady=15)
+        width, height = 480, 600
+        x, y = (self.root.winfo_screenwidth() - width) // 2, (self.root.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.grid_columnconfigure(0, weight=1)
+        dialog.grid_rowconfigure(3, weight=1)
 
-        vars_map = {};
-        current = set(item.get("tags", []))
-        frame = tk.Frame(dialog, bg=self.colors['card']);
-        frame.pack(padx=20, pady=10, fill='x')
-        for tag in self.app_data["tags"]:
-            var = tk.BooleanVar(value=(tag in current));
+        tk.Label(dialog, text=f"Редактирование: {item['name']}", bg=self.colors['bg'],
+                 font=('Segoe UI', 12, 'bold')).grid(row=0, column=0, pady=(20, 10))
+
+        form_frame = tk.Frame(dialog, bg=self.colors['card'], relief='solid', bd=1, highlightthickness=1)
+        form_frame.grid(row=1, column=0, sticky='ew', padx=20, pady=(0, 10))
+        form_frame.columnconfigure(1, weight=1)
+
+        def create_field(parent, label_text, initial, row_num):
+            self.mk_label(parent, label_text, bold=True).grid(row=row_num, column=0, sticky='w', padx=10, pady=6)
+            ent = self.mk_entry(parent);
+            ent.insert(0, initial)
+            ent.grid(row=row_num, column=1, sticky='ew', padx=10, pady=6)
+            return ent
+
+        name_entry = create_field(form_frame, "Название:", item['name'], 0)
+        client_entry = create_field(form_frame, "Номер клиента:", item['client_number'], 1)
+
+        tk.Label(dialog, text="Теги:", bg=self.colors['bg'], font=('Segoe UI', 10, 'bold')).grid(row=2, column=0,
+                                                                                                 sticky='w', padx=20,
+                                                                                                 pady=(10, 0))
+
+        container, tag_scrollable_area = self._create_scrollable_area(dialog)
+        container.grid(row=3, column=0, sticky='nsew', padx=20, pady=10)
+
+        vars_map, current_tags = {}, set(item.get('tags', []))
+        for i, tag in enumerate(self.app_data["tags"]):
+            var = tk.BooleanVar(value=(tag in current_tags))
             vars_map[tag] = var
-            self.mk_checkbutton(frame, tag, var).pack(anchor='w')
+            self.mk_checkbutton(tag_scrollable_area, tag, var).grid(row=i, column=0, sticky='w', padx=10, pady=5)
 
-        def save_tags():
-            item["tags"] = [t for t, v in vars_map.items() if v.get()]
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
+        def save_changes():
+            if not name_entry.get().strip(): return messagebox.showwarning("Внимание", "Название не может быть пустым!")
+            item['name'] = name_entry.get().strip()
+            item['client_number'] = client_entry.get().strip()
+            item['tags'] = [t for t, v in vars_map.items() if v.get()]
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
             dialog.destroy()
 
-        self.create_button(dialog, "Сохранить", save_tags, variant='success').pack(pady=20)
+        self.create_button(dialog, "Сохранить", save_changes, variant='success').grid(row=4, column=0, pady=20)
+
+    def _edit_item_template_dialog(self, item_type):
+        listbox = self.groups_listbox if item_type == 'group' else self.themes_listbox
+        data_list = self.app_data["groups"] if item_type == 'group' else self.app_data["themes"]
+        item_type_str = "группы" if item_type == 'group' else "темы"
+
+        sel = listbox.curselection()
+        if not sel: return messagebox.showwarning("Внимание", f"Выберите {item_type_str} для настройки шаблона!")
+        item = data_list[sel[0]]
+
+        if not self.app_data["templates"]: return messagebox.showinfo("Информация",
+                                                                      "Создайте шаблоны сообщений перед настройкой.")
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title(f"Настройка шаблона для {item_type_str} {item['name']}")
+        dlg.configure(bg=self.colors['bg'])
+        dlg.transient(self.root);
+        dlg.grab_set()
+        width, height = 500, 550
+        x, y = (self.root.winfo_screenwidth() - width) // 2, (self.root.winfo_screenheight() - height) // 2
+        dlg.geometry(f"{width}x{height}+{x}+{y}")
+        dlg.grid_columnconfigure(0, weight=1)
+        dlg.grid_rowconfigure(2, weight=1)
+
+        tk.Label(dlg, text="Выберите шаблон и настройте текст", bg=self.colors['bg'],
+                 font=('Segoe UI', 12, 'bold')).grid(row=0, column=0, pady=(20, 10))
+
+        combo_frame = tk.Frame(dlg, bg=self.colors['bg'])
+        combo_frame.grid(row=1, column=0, sticky='ew', padx=20, pady=(0, 10))
+        combo_frame.columnconfigure(1, weight=1)
+        self.mk_label(combo_frame, "Шаблон:").grid(row=0, column=0, padx=(0, 10))
+        template_names = [tpl["name"] for tpl in self.app_data["templates"]]
+        template_var = tk.StringVar(value=template_names[0])
+        template_combo = ttk.Combobox(combo_frame, textvariable=template_var, values=template_names, state='readonly')
+        template_combo.grid(row=0, column=1, sticky='ew')
+
+        text_frame, custom_text = self.mk_text(dlg)
+        text_frame.grid(row=2, column=0, sticky='nsew', padx=20, pady=(0, 10))
+
+        var_frame = tk.Frame(dlg, bg=self.colors['bg'])
+        var_frame.grid(row=3, column=0, sticky='w', padx=20, pady=(4, 8))
+        for i, param in enumerate(self.parameters):
+            name = param['name_var'].get()
+            placeholder = f"[{name}]"
+            btn = self.create_button(var_frame, placeholder, lambda p=placeholder: custom_text.insert(tk.INSERT, p),
+                                     variant='secondary')
+            btn.grid(row=0, column=i, padx=4)
+
+        def load_template_text(event=None):
+            name = template_var.get()
+            base_text = next((tpl.get("text", "") for tpl in self.app_data["templates"] if tpl["name"] == name), "")
+            override_text = item.get('custom_templates', {}).get(name, base_text)
+            custom_text.delete('1.0', tk.END);
+            custom_text.insert('1.0', override_text)
+
+        template_combo.bind('<<ComboboxSelected>>', load_template_text)
+        load_template_text()
+
+        def save_override():
+            name = template_var.get()
+            text = custom_text.get('1.0', tk.END).rstrip()
+            item.setdefault('custom_templates', {})[name] = text
+            save_app_data(self.app_data)
+            messagebox.showinfo("Успех", f"Шаблон '{name}' обновлен для {item_type_str} {item['name']}")
+            dlg.destroy()
+
+        btn_frame = tk.Frame(dlg, bg=self.colors['bg'])
+        btn_frame.grid(row=4, column=0, pady=15)
+        self.create_button(btn_frame, "💾  Сохранить", save_override, variant='success').grid(row=0, column=0, padx=10)
+        self.create_button(btn_frame, "✗  Отмена", dlg.destroy, variant='secondary').grid(row=0, column=1, padx=10)
 
     def use_template(self):
         sel = self.templates_listbox.curselection()
-        if not sel:
-            return messagebox.showwarning("Внимание", "Выберите шаблон!")
-        if not hasattr(self, 'message_text'):
-            return messagebox.showwarning("Внимание", "Поле сообщения ещё не готово")
-        try:
-            text = self.app_data["templates"][sel[0]]["text"]
-        except Exception:
-            return messagebox.showerror("Ошибка", "Не удалось прочитать выбранный шаблон")
+        if not sel: return messagebox.showwarning("Внимание", "Выберите шаблон!")
+
+        tpl = self.app_data["templates"][sel[0]]
         self.message_text.delete("1.0", tk.END)
-        self.message_text.insert("1.0", text)
+        self.message_text.insert("1.0", tpl.get("text", ""))
+        self.current_template_name = tpl.get("name")
+
+        if "params" in tpl and isinstance(tpl["params"], list):
+            self.parameters = [{'name_var': tk.StringVar(value=p), 'value_var': tk.StringVar()} for p in tpl["params"]]
+            self.build_params_section(self.param_frame)
+
+        self.update_char_counter()
 
     def save_template(self):
-        if not hasattr(self, 'message_text'):
-            return messagebox.showwarning("Внимание", "Поле сообщения ещё не готово")
         text = self.message_text.get("1.0", tk.END).strip()
-        if not text:
-            return messagebox.showwarning("Внимание", "Текст сообщения пуст!")
+        if not text: return messagebox.showwarning("Внимание", "Текст сообщения пуст!")
         name = simpledialog.askstring("Сохранить шаблон", "Название шаблона:", parent=self.root)
-        if not name:
-            return
-        # перезапись по имени с подтверждением
-        if any(t.get("name") == name for t in self.app_data.get("templates", [])):
-            if not messagebox.askyesno("Внимание", "Шаблон с таким именем уже существует. Перезаписать?"):
-                return
-            self.app_data["templates"] = [t for t in self.app_data["templates"] if t.get("name") != name]
-        self.app_data.setdefault("templates", []).append({"name": name, "text": text})
+        if not name: return
+
+        param_names = [p['name_var'].get() for p in self.parameters if p['name_var'].get()]
+
+        if any(t["name"] == name for t in self.app_data["templates"]):
+            if not messagebox.askyesno("Внимание", "Шаблон с таким именем уже существует. Перезаписать?"): return
+            self.app_data["templates"] = [t for t in self.app_data["templates"] if t["name"] != name]
+
+        self.app_data["templates"].append({"name": name, "text": text, "params": param_names})
         save_app_data(self.app_data)
         self.refresh_all_lists()
         messagebox.showinfo("Успех", "Шаблон сохранен!")
 
     def delete_template(self):
         sel = self.templates_listbox.curselection()
-        if not sel:
-            return messagebox.showwarning("Внимание", "Выберите шаблон для удаления!")
+        if not sel: return messagebox.showwarning("Внимание", "Выберите шаблон для удаления!")
         name = self.app_data["templates"][sel[0]]["name"]
         if messagebox.askyesno("Подтверждение", f"Удалить шаблон '{name}'?"):
             del self.app_data["templates"][sel[0]]
@@ -862,18 +1233,12 @@ class TelegramSenderApp:
             self.refresh_all_lists()
             messagebox.showinfo("Успех", "Шаблон удален!")
 
-    # ---------- ВСПОМОГАТЕЛЬНОЕ ----------
     def get_input_from_dialog(self, title, prompt, show=None, timeout=120):
-        """
-        Безопасный запрос строки у пользователя из фонового потока.
-        Диалог создаётся в главном потоке через .after(). Возвращает None по таймауту.
-        """
         result, event = [], threading.Event()
 
         def ask():
             try:
-                ans = simpledialog.askstring(title, prompt, show=show, parent=self.root)
-                result.append(ans)
+                result.append(simpledialog.askstring(title, prompt, show=show, parent=self.root))
             finally:
                 event.set()
 
