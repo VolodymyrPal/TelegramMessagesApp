@@ -1246,34 +1246,22 @@ class TelegramSenderApp:
         event.wait(timeout=timeout)
         return result[0] if result else None
 
-    def show_thread_safe_message(self, msg_type, title, message):
-        if msg_type == "error":
-            messagebox.showerror(title, message)
-        elif msg_type == "info":
-            messagebox.showinfo(title, message)
-
-    # ---------- ДЕЙСТВИЯ ----------
+    # -- Fetch Page Logic --
     def fetch_user_groups(self):
         if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
             messagebox.showwarning("Внимание", "Настройте API ключи!");
             return self.notebook.select(0)
-        try:
-            self.fetch_btn.state(['disabled'])
-            self.fetch_btn.config(text="⏳ Загрузка...")
-        except Exception:
-            pass
-        threading.Thread(target=self.fetch_in_thread,
-                         args=(self._fetch_groups_async, self.update_fetched_groups_list_ui, self.fetch_btn,
-                               "🔄  Загрузить мои группы"), daemon=True).start()
-
-    async def _fetch_groups_async(self, client):
-        return await get_user_groups(client)
+        self.fetch_btn.state(['disabled']);
+        self.fetch_btn.config(text="⏳ Загрузка...")
+        threading.Thread(target=self.fetch_in_thread, daemon=True,
+                         args=(lambda c: get_user_groups(c), self.update_fetched_groups_list_ui,
+                               self.fetch_btn, "🔄  Загрузить мои группы")).start()
 
     def update_fetched_groups_list_ui(self, groups):
-        self.fetched_groups_listbox.delete(0, tk.END);
+        self.fetched_groups_listbox.delete(0, tk.END)
         self.fetched_groups = groups
         for g in groups: self.fetched_groups_listbox.insert(tk.END, f"{g['name']} | ID: {g['id']}")
-        messagebox.showinfo("Успех", f"Загружено {len(groups)} групп!");
+        messagebox.showinfo("Успех", f"Загружено {len(groups)} групп!")
         self.notebook.select(2)
 
     def add_fetched_groups(self):
@@ -1282,112 +1270,173 @@ class TelegramSenderApp:
         added = 0
         for idx in sel:
             g = self.fetched_groups[idx]
-            if not any(x['id'] == g['id'] for x in self.app_data["groups"]):
-                self.app_data["groups"].append({"id": g['id'], "name": g['name'], "cabinet": "", "tags": []});
-                added += 1
+            if any(x['id'] == g['id'] for x in self.app_data["groups"]): continue
+
+            result = self._ask_new_group_info(g)
+            if result is None: continue
+
+            client_num, selected_tag = result
+            record = {"id": g['id'], "name": g['name'], "client_number": client_num, "tags": [], "custom_templates": {}}
+            if selected_tag:
+                record["tags"] = [selected_tag]
+                if selected_tag not in self.app_data["tags"]: self.app_data["tags"].append(selected_tag)
+            self.app_data["groups"].append(record)
+            added += 1
+
         if added:
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
-            messagebox.showinfo("Успех", f"Добавлено {added} новых групп!");
-            self.notebook.select(1)
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
+            messagebox.showinfo("Успех", f"Добавлено {added} новых групп!")
         else:
-            messagebox.showinfo("Информация", "Все выбранные группы уже есть в списке.")
+            messagebox.showinfo("Информация", "Все выбранные группы уже есть в списке или добавление отменено.")
 
-    def fetch_group_topics(self):
-        selected_group_name = self.topic_check_group_combo.get()
-        if not selected_group_name: return messagebox.showwarning("Внимание", "Выберите группу из списка!")
-        gid = self.group_name_to_id_map[selected_group_name]
-        if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
-            messagebox.showwarning("Внимание", "Настройте API ключи!");
-            return self.notebook.select(0)
-        try:
-            self.fetch_topics_btn.state(['disabled'])
-            self.fetch_topics_btn.config(text="⏳  Поиск...")
-        except Exception:
-            pass
-        threading.Thread(target=self.fetch_in_thread,
-                         args=(lambda c: get_group_topics(c, gid), self.update_fetched_topics_list_ui,
-                               self.fetch_topics_btn, "🔍  Получить темы"), daemon=True).start()
+    def _ask_new_group_info(self, group):
+        result = {'value': None}
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Новый клиент");
+        dialog.configure(bg=self.colors['bg'])
+        dialog.transient(self.root);
+        dialog.grab_set()
+        width, height = 440, 300
+        x, y = (self.root.winfo_screenwidth() - width) // 2, (self.root.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.grid_columnconfigure(0, weight=1)
 
-    def update_fetched_topics_list_ui(self, result):
-        topics, error = result;
+        card = self.create_card(dialog, f"Добавление группы '{group['name']}'")
+        card.grid(row=0, column=0, sticky='nsew', padx=20, pady=20)
+        card.columnconfigure(0, weight=1)
+
+        self.mk_label(card, "Укажите номер/название клиента:", bold=True).grid(row=0, column=0, sticky='w')
+        entry = self.mk_entry(card);
+        entry.grid(row=1, column=0, sticky='ew', pady=(4, 12))
+
+        tags = self.app_data.get('tags', [])
+        tag_var = tk.StringVar()
+        if tags:
+            options = ["— Без тега —"] + tags
+            self.mk_label(card, "Выберите тег (необязательно):", bold=True).grid(row=2, column=0, sticky='w')
+            combo = ttk.Combobox(card, state='readonly', values=options, textvariable=tag_var)
+            combo.grid(row=3, column=0, sticky='ew', pady=(4, 12));
+            combo.current(0)
+
+        btn_frame = tk.Frame(card, bg=self.colors['card'])
+        btn_frame.grid(row=4, column=0, sticky='ew', pady=(8, 4))
+        btn_frame.columnconfigure((0, 1), weight=1)
+
+        def on_ok():
+            tag = tag_var.get() if tags and tag_var.get() != "— Без тега —" else None
+            result['value'] = (entry.get().strip(), tag)
+            dialog.destroy()
+
+        self.create_button(btn_frame, "Добавить", on_ok, variant='success').grid(row=0, column=0, sticky='ew',
+                                                                                 padx=(0, 4))
+        self.create_button(btn_frame, "Отмена", dialog.destroy, variant='secondary').grid(row=0, column=1, sticky='ew',
+                                                                                          padx=(4, 0))
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        self.root.wait_window(dialog)
+        return result['value']
+
+    def fetch_all_group_topics(self):
+        if not self.fetched_groups: return messagebox.showwarning("Внимание", "Сначала загрузите список групп!")
+        self.fetch_topics_btn.state(['disabled']);
+        self.fetch_topics_btn.config(text="⏳  Поиск тем...")
+        threading.Thread(target=self.fetch_in_thread, daemon=True,
+                         args=(self._fetch_topics_for_groups_async, self.update_fetched_topics_list_ui_multi,
+                               self.fetch_topics_btn, "🔍  Найти темы")).start()
+
+    async def _fetch_topics_for_groups_async(self, client):
+        all_topics = []
+        for g in self.fetched_groups:
+            try:
+                topics, error = await get_group_topics(client, g['id'])
+                if topics:
+                    all_topics.extend(
+                        [{'group_id': g['id'], 'group_name': g['name'], 'topic_id': t['topic_id'], 'name': t['name']}
+                         for t in topics])
+            except Exception:
+                continue
+        return all_topics
+
+    def update_fetched_topics_list_ui_multi(self, topics):
         self.fetched_topics_listbox.delete(0, tk.END)
-        if error: return messagebox.showerror("Ошибка", error)
         self.fetched_topics = topics
-        for t in topics: self.fetched_topics_listbox.insert(tk.END, f"{t['name']} | ID темы: {t['topic_id']}")
+        if not topics: return messagebox.showinfo("Информация", "Темы не найдены для загруженных групп.")
+        for t in topics: self.fetched_topics_listbox.insert(tk.END,
+                                                            f"{t['group_name']} → {t['name']} | ID: {t['topic_id']}")
         messagebox.showinfo("Успех", f"Найдено {len(topics)} тем!")
 
     def add_fetched_topics(self):
-        sel = self.fetched_topics_listbox.curselection();
-        group_name = self.topic_check_group_combo.get()
-        if not group_name: return messagebox.showwarning("Внимание", "Сначала выберите группу!")
-        gid = self.group_name_to_id_map[group_name]
+        sel = self.fetched_topics_listbox.curselection()
         if not sel: return messagebox.showwarning("Внимание", "Выберите темы для добавления!")
         added = 0
         for idx in sel:
             t = self.fetched_topics[idx]
-            if not any(x['topic_id'] == t['topic_id'] and x['group_id'] == gid for x in self.app_data["themes"]):
+            if not any(
+                    x['topic_id'] == t['topic_id'] and x['group_id'] == t['group_id'] for x in self.app_data["themes"]):
                 self.app_data["themes"].append(
-                    {"group_id": gid, "topic_id": t['topic_id'], "name": t['name'], "cabinet": "", "tags": []});
+                    {"group_id": t['group_id'], "topic_id": t['topic_id'], "name": t['name'], "client_number": "",
+                     "tags": [], "custom_templates": {}})
                 added += 1
         if added:
-            save_app_data(self.app_data);
-            self.refresh_all_lists();
-            messagebox.showinfo("Успех", f"Добавлено {added} новых тем!");
-            self.notebook.select(1)
+            save_app_data(self.app_data)
+            self.refresh_all_lists()
+            messagebox.showinfo("Успех", f"Добавлено {added} новых тем!")
         else:
             messagebox.showinfo("Информация", "Все выбранные темы уже есть в списке.")
 
     def fetch_in_thread(self, async_func, callback, btn, btn_text):
+        global TG_WORKER
         try:
-            # Запускаем singleton-воркер (если ещё не запущен)
             TG_WORKER.start(self)
-            # Выполняем задачу последовательно под asyncio.Lock
             result = TG_WORKER.call(async_func)
             self.root.after(0, callback, result)
         except Exception as e:
             _logger.exception("Ошибка в фоне (fetch)")
-            self.root.after(0, messagebox.showerror, "Ошибка", str(e))
+            TG_WORKER = TelethonWorker()
+            err_msg = str(e)
+            if isinstance(e, ApiIdInvalidError): err_msg = "Некорректные API ID или API Hash."
+            self.root.after(0, messagebox.showerror, "Ошибка", err_msg)
         finally:
             self.root.after(0, self._restore_button, btn, btn_text)
 
     def _restore_button(self, btn, text):
         try:
-            btn.state(['!disabled'])
+            btn.state(['!disabled']);
             btn.config(text=text)
-        except Exception:
+        except tk.TclError:
             pass
 
     def load_saved_config(self):
         for key, entry in [("api_id", self.api_id_entry), ("api_hash", self.api_hash_entry),
                            ("phone", self.phone_entry), ("rate_delay", self.rate_delay_entry)]:
-            if entry is None:
-                continue
-            value = self.config.get(key)
-            if value is not None:
-                entry.delete(0, tk.END)
+            if (value := self.config.get(key)) is not None:
+                entry.delete(0, tk.END);
                 entry.insert(0, str(value))
 
+    # ============================================
+    # LOGIC HANDLERS
+    # ============================================
+    # -- Settings Page Logic --
     def save_settings(self):
-        api_id = self.api_id_entry.get().strip();
-        api_hash = self.api_hash_entry.get().strip();
-        phone = self.phone_entry.get().strip()
-        rate_txt = self.rate_delay_entry.get().strip() if hasattr(self, "rate_delay_entry") else "10"
+        api_id, api_hash, phone = self.api_id_entry.get(), self.api_hash_entry.get(), self.phone_entry.get()
         if not all([api_id, api_hash, phone]): return messagebox.showwarning("Внимание", "Заполните все поля!")
-        try:
-            int(api_id)
-        except ValueError:
-            return messagebox.showerror("Ошибка", "API ID должен быть числом!")
         if not phone.startswith("+"): return messagebox.showwarning("Внимание", "Номер телефона должен начинаться с +")
         try:
-            rate_delay = float(rate_txt)
+            rate_delay = float(self.rate_delay_entry.get())
             if rate_delay < 0: raise ValueError
         except ValueError:
-            return messagebox.showerror("Ошибка", "Задержка должна быть неотрицательным числом (в секундах).")
+            return messagebox.showerror("Ошибка", "Задержка должна быть неотрицательным числом.")
+
         self.config = {"api_id": api_id, "api_hash": api_hash, "phone": phone, "rate_delay": rate_delay}
         save_config(api_id, api_hash, phone, rate_delay)
-        self.settings_status.config(text="✓ Настройки сохранены!", fg=self.colors['success'])
+        self.settings_status.config(text="✓ Настройки сохранены!")
 
+        global TG_WORKER;
+        TG_WORKER = TelethonWorker()
+        self.root.after(3000, lambda: self.settings_status.config(text=""))
+
+    # -- Sending Page Logic --
     def select_all(self):
         for var, _ in getattr(self, 'group_vars', []) + getattr(self, 'theme_vars', []): var.set(True)
 
@@ -1395,17 +1444,13 @@ class TelegramSenderApp:
         for var, _ in getattr(self, 'group_vars', []) + getattr(self, 'theme_vars', []): var.set(False)
 
     def log(self, message):
-        # Пишем в файл и в UI
-        try:
-            _logger.info(message)
-        except Exception:
-            pass
+        _logger.info(message)
         self.root.after(0, self._log_threadsafe, message)
 
     def _log_threadsafe(self, message):
-        self.log_text.configure(state='normal');
+        self.log_text.configure(state='normal')
         self.log_text.insert(tk.END, message + "\n");
-        self.log_text.see(tk.END);
+        self.log_text.see(tk.END)
         self.log_text.configure(state='disabled')
 
     def prepare_send(self):
@@ -1413,70 +1458,149 @@ class TelegramSenderApp:
         if not all(self.config.get(k) for k in ["api_id", "api_hash", "phone"]):
             messagebox.showwarning("Внимание", "Настройте API ключи!");
             return self.notebook.select(0)
+
         selected_groups = [g for var, g in getattr(self, 'group_vars', []) if var.get()]
         selected_themes = [t for var, t in getattr(self, 'theme_vars', []) if var.get()]
+
         if not selected_groups and not selected_themes: return messagebox.showwarning("Внимание",
                                                                                       "Выберите получателей!")
-        message = self.message_text.get("1.0", tk.END).strip()
-        if not message: return messagebox.showwarning("Внимание", "Введите текст сообщения!")
-        self.show_confirmation_dialog(selected_groups, selected_themes, message)
+
+        replaced_message = self.replace_vars(self.message_text.get("1.0", tk.END).strip())
+        if not replaced_message and not self.attachments: return messagebox.showwarning("Внимание",
+                                                                                        "Введите текст или добавьте вложения!")
+
+        self.show_confirmation_dialog(selected_groups, selected_themes, replaced_message)
 
     def show_confirmation_dialog(self, selected_groups, selected_themes, message):
-        dialog = tk.Toplevel(self.root);
+        dialog = tk.Toplevel(self.root)
         dialog.title("Подтверждение");
-        dialog.configure(bg=self.colors['bg']);
+        dialog.configure(bg=self.colors['bg'])
         dialog.transient(self.root);
         dialog.grab_set()
-        content = tk.Frame(dialog, bg=self.colors['bg']);
-        content.pack(fill='both', expand=True, padx=20, pady=20)
-        recipients_card = self.create_card(content, f"👥  Получатели ({len(selected_groups) + len(selected_themes)})");
-        recipients_card.pack(fill='both', expand=True, pady=(0, 15))
-        recipients_text = scrolledtext.ScrolledText(recipients_card, height=10, bg=self.colors['input_bg'],
-                                                    fg=self.colors['input_fg']);
-        recipients_text.pack(fill='both', expand=True)
-        if selected_groups:
-            recipients_text.insert(tk.END, "ГРУППЫ:\n", 'bold');
-            for g in selected_groups: recipients_text.insert(tk.END, f"  • {g['name']}\n")
-        if selected_themes:
-            recipients_text.insert(tk.END, "\nТЕМЫ:\n", 'bold');
-            for t in selected_themes: recipients_text.insert(tk.END, f"  • {t['name']}\n")
-        recipients_text.tag_config('bold', font=('Segoe UI', 9, 'bold'), foreground=self.colors['primary']);
-        recipients_text.config(state='disabled')
+        width, height = 700, 600
+        x, y = (self.root.winfo_screenwidth() - width) // 2, (self.root.winfo_screenheight() - height) // 2
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.grid_columnconfigure(0, weight=1)
+
+        tk.Label(dialog, text="Подтверждение отправки", bg=self.colors['bg'], font=('Segoe UI', 14, 'bold')).grid(row=0,
+                                                                                                                  column=0,
+                                                                                                                  pady=(
+                                                                                                                      20,
+                                                                                                                      10))
+
+        container, scrollable_area = self._create_scrollable_area(dialog)
+        container.grid(row=1, column=0, sticky='nsew', padx=20, pady=(0, 10))
+        dialog.grid_rowconfigure(1, weight=1)
+
+        current_tpl_name = getattr(self, 'current_template_name', None)
+        recipient_entries, entry_widgets = [], []
+
+        all_recipients = [('group', g) for g in selected_groups] + [('theme', t) for t in selected_themes]
+
+        for i, (type, data) in enumerate(all_recipients):
+            override = data.get('custom_templates', {}).get(current_tpl_name) if current_tpl_name else None
+            msg_text = self.replace_vars(override if override is not None else message)
+            recipient_entries.append({'type': type, 'data': data, 'message': msg_text})
+
+            row = tk.Frame(scrollable_area, bg=self.colors['card'], relief='solid', bd=1)
+            row.grid(row=i, column=0, sticky='ew', pady=4)
+            row.columnconfigure(0, weight=1)
+            tk.Label(row, text=data['name'], bg=self.colors['card'], font=('Segoe UI', 10, 'bold')).grid(row=0,
+                                                                                                         column=0,
+                                                                                                         sticky='ew',
+                                                                                                         padx=6,
+                                                                                                         pady=(4, 2))
+
+            txt_frame, txt = self.mk_text(row)
+            txt_frame.grid(row=1, column=0, sticky='nsew', padx=6, pady=(0, 6))
+            row.rowconfigure(1, weight=1)
+            txt.insert('1.0', msg_text);
+            entry_widgets.append(txt)
+
+        if self.attachments:
+            attach_card = self.create_card(dialog, f"📎  Вложения ({len(self.attachments)})")
+            attach_card.grid(row=2, column=0, sticky='ew', padx=20, pady=(0, 10))
+            attach_card.rowconfigure(0, weight=1)
+            attach_card.columnconfigure(0, weight=1)
+            list_frame, attach_list = self.mk_listbox(attach_card)
+            list_frame.grid(row=0, column=0, sticky='nsew')
+            for path in self.attachments: attach_list.insert(tk.END, os.path.basename(path))
+            attach_list.config(state='disabled')
+
         btn_frame = tk.Frame(dialog, bg=self.colors['bg']);
-        btn_frame.pack(pady=10)
-        self.create_button(btn_frame, "✓  Отправить",
-                           lambda: self.confirm_and_send(dialog, selected_groups, selected_themes, message),
-                           variant='success').pack(side='left', padx=10)
-        self.create_button(btn_frame, "✗  Отмена", dialog.destroy, variant='danger').pack(side='left', padx=10)
+        btn_frame.grid(row=3, column=0, pady=10)
 
-    def confirm_and_send(self, dialog, selected_groups, selected_themes, message):
-        dialog.destroy();
+        def confirm():
+            custom_msgs = []
+            for i, rec in enumerate(recipient_entries):
+                msg_txt = entry_widgets[i].get('1.0', tk.END).rstrip()
+                if not msg_txt and not self.attachments:
+                    return messagebox.showwarning("Внимание",
+                                                  f"Сообщение для '{rec['data']['name']}' не может быть пустым!")
+                custom_msgs.append({'type': rec['type'], 'data': rec['data'], 'message': msg_txt})
+            self.confirm_and_send(dialog, custom_msgs)
+
+        self.create_button(btn_frame, "✓  Отправить", confirm, variant='success').grid(row=0, column=0, padx=10)
+        self.create_button(btn_frame, "✗  Отмена", dialog.destroy, variant='secondary').grid(row=0, column=1, padx=10)
+
+    def confirm_and_send(self, dialog, custom_messages):
+        dialog.destroy()
         self.is_sending = True
-        try:
-            self.send_btn.state(['disabled'])
-            self.send_btn.config(text="⏳ Идет отправка...")
-        except Exception:
-            pass
+        self.send_btn.state(['disabled']);
+        self.send_btn.config(text="⏳ Идет отправка...")
         self.log("🚀 Начинаю отправку...\n")
-        threading.Thread(target=self.send_in_thread, args=(selected_groups, selected_themes, message),
-                         daemon=True).start()
+        threading.Thread(target=self.send_in_thread, daemon=True,
+                         args=(list(self.attachments), custom_messages)).start()
 
-    def send_in_thread(self, selected_groups, selected_themes, message):
+    def send_in_thread(self, attachments, custom_messages):
+        global TG_WORKER
         try:
-            self.log("🔐 Подключение к Telegram...")
+            self.log("🔌 Подключение к Telegram...")
             TG_WORKER.start(self)
             self.log("✓ Успешно подключено!")
+            rate_delay = self.config.get("rate_delay", 10)
 
-            rate_delay = float(self.config.get("rate_delay", 10))
+            async def _send_all(client):
+                success, failed = 0, 0
+                for entry in custom_messages:
+                    try:
+                        data, msg_text = entry['data'], entry['message']
+                        recipient_id = data['id'] if entry['type'] == 'group' else data['group_id']
+                        reply_to = data.get('topic_id') if entry['type'] == 'theme' else None
+                        name = f"{data['name']} (клиент: {data.get('client_number', 'N/A')})"
 
-            def _send(client):
-                return send_messages(client, selected_groups, selected_themes, message, self.log, rate_delay)
+                        if attachments:
+                            await client.send_file(recipient_id, file=attachments,
+                                                   caption=msg_text if msg_text else None, reply_to=reply_to)
+                        elif msg_text:
+                            await client.send_message(recipient_id, message=msg_text, reply_to=reply_to)
 
-            success, failed = TG_WORKER.call(_send)
-            self.log(f" {'=' * 30} 📊 ИТОГО: ✓ {success} | ✗ {failed} {'=' * 30} ")
+                        self.log(f"✓ Отправлено: {name}")
+                        success += 1
+                        await asyncio.sleep(rate_delay)
+                    except Exception as e:
+                        self.log(f"✗ Ошибка {name}: {e}")
+                        _logger.exception("Ошибка отправки")
+                        failed += 1
+                return success, failed
+
+            success, failed = TG_WORKER.call(_send_all)
+
+            self.log(f"\n{'=' * 30} 📊 ИТОГО: ✓ {success} | ✗ {failed} {'=' * 30}\n")
+
+            if failed == 0:
+                self.root.after(0, messagebox.showinfo, "Успех",
+                                f"Все сообщения успешно отправлены!\nОтправлено: {success}")
+            else:
+                self.root.after(0, messagebox.showwarning, "Завершено с ошибками",
+                                f"Отправлено: {success}\nОшибок: {failed}")
+
         except Exception as e:
             _logger.exception("Ошибка при отправке")
-            self.root.after(0, messagebox.showerror, "Ошибка", str(e))
+            TG_WORKER = TelethonWorker()
+            err_msg = str(e)
+            if isinstance(e, ApiIdInvalidError): err_msg = "Некорректные API ID или API Hash."
+            self.root.after(0, messagebox.showerror, "Ошибка", err_msg)
         finally:
             self.is_sending = False
             self.root.after(0, self._restore_button, self.send_btn, "📨  Отправить сообщения")
