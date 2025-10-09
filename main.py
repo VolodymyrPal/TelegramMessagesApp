@@ -236,12 +236,12 @@ class TelegramSenderApp:
 
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
-        window_width = int(screen_width * 0.85)
-        window_height = int(screen_height * 0.85)
+        window_width = int(screen_width * 0.5)
+        window_height = int(screen_height * 0.5)
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        self.root.minsize(int(screen_width * 0.5), int(screen_height * 0.5))
+        self.root.minsize(int(screen_width * 0.2), int(screen_height * 0.2))
 
         self.colors = {
             'bg': '#f8fafc', 'card': '#ffffff', 'primary': '#3b82f6', 'primary_hover': '#2563eb',
