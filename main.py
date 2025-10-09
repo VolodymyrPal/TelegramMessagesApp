@@ -423,7 +423,7 @@ class TelegramSenderApp:
         scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky='nsew')
-        scrollbar.grid(row=0, column=1, sticky='ns')
+        scrollbar.grid(row=0, column=1, sticky='nsew')
 
         return container, scrollable_frame
 
@@ -629,10 +629,10 @@ class TelegramSenderApp:
 
         tk.Label(groups_card, text="Загрузите список ваших Telegram групп и каналов",
                  bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9, 'italic')).grid(
-            row=0, column=0, pady=(0, 15))
+            row=0, column=0, pady=(0, 15), sticky='nsew')
         self.fetch_btn = self.create_button(groups_card, "🔄  Загрузить мои группы", self.fetch_user_groups,
                                             variant='primary')
-        self.fetch_btn.grid(row=1, column=0, pady=20)
+        self.fetch_btn.grid(row=1, column=0, pady=20, sticky='nsew')
 
         list_frame_g, self.fetched_groups_listbox = self.mk_listbox(groups_card)
         self.fetched_groups_listbox.config(selectmode='extended')
@@ -640,9 +640,9 @@ class TelegramSenderApp:
 
         tk.Label(groups_card, text="💡 Выберите несколько групп (Shift/Ctrl)",
                  bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9)).grid(
-            row=3, column=0, pady=(5, 15))
+            row=3, column=0, pady=(5, 15), sticky='nsew')
         self.create_button(groups_card, "➕  Добавить выбранные", self.add_fetched_groups,
-                           variant='success').grid(row=4, column=0, pady=15, sticky='ew')
+                           variant='success').grid(row=4, column=0, pady=15, sticky='nsew')
 
         # --- Карточка: поиск тем в группах ---
         topics_card = self.create_card(content_container, "🔎  Получить темы из групп-форумов")
@@ -652,10 +652,10 @@ class TelegramSenderApp:
 
         tk.Label(topics_card, text="Найдите доступные темы во всех группах-форумах",
                  bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9, 'italic')).grid(
-            row=0, column=0, pady=(0, 15))
+            row=0, column=0, pady=(0, 15), sticky='nsew')
         self.fetch_topics_btn = self.create_button(topics_card, "🔍  Найти темы", self.fetch_all_group_topics,
                                                    variant='primary')
-        self.fetch_topics_btn.grid(row=1, column=0, pady=15)
+        self.fetch_topics_btn.grid(row=1, column=0, pady=15, sticky='nsew')
 
         list_frame_t, self.fetched_topics_listbox = self.mk_listbox(topics_card)
         self.fetched_topics_listbox.config(selectmode='extended')
@@ -663,9 +663,9 @@ class TelegramSenderApp:
 
         tk.Label(topics_card, text="💡 Выберите темы для добавления",
                  bg=self.colors['card'], fg=self.colors['text_muted'], font=('Segoe UI', 9)).grid(
-            row=3, column=0, pady=(5, 15))
+            row=3, column=0, pady=(5, 15), sticky='nsew')
         self.create_button(topics_card, "➕  Добавить выбранные темы", self.add_fetched_topics,
-                           variant='success').grid(row=4, column=0, pady=15, sticky='ew')
+                           variant='success').grid(row=4, column=0, pady=15, sticky='nsew')
 
     # -- Sending Page: UI --
     def create_sending_tab(self, parent):
@@ -678,26 +678,47 @@ class TelegramSenderApp:
         parent.grid_columnconfigure(0, weight=1)
         container, scrollable_frame = self._create_scrollable_area(parent)
         container.grid(row=0, column=0, sticky='nsew')
+
+        # Для корректного растяжения по вертикали задаем вес строке 0 в scrollable_frame
+        scrollable_frame.grid_rowconfigure(0, weight=1)
         scrollable_frame.grid_columnconfigure(0, weight=1)
 
-        # --- Секция выбора получателей (фильтр, списки групп и тем) ---
-        # Используем отдельную карточку с заголовком, внутри которой размещается фильтр по тегам и списки групп/тем.
-        lists_card = self.create_card(scrollable_frame, "📋  Выбор получателей")
-        lists_card.grid(row=0, column=0, sticky='nsew', padx=16, pady=(16, 12))
-        # Row 0 растягивается вместе с другими секциями, чтобы карточка занимала достаточную высоту
-        scrollable_frame.grid_rowconfigure(0, weight=1)
-        # сохраняем для обновления при изменении данных
-        self.lists_card_sending = lists_card
+        # --- Двухколоночный макет: слева выбор получателей, справа подготовка сообщения ---
+        split_container = tk.Frame(scrollable_frame, bg=self.colors['bg'])
+        split_container.grid(row=0, column=0, sticky='nsew', padx=0, pady=0)
+        # соотношение 3:7 соответствует ~30% и ~70%
+        split_container.grid_columnconfigure(0, weight=3)
+        split_container.grid_columnconfigure(1, weight=7)
+        split_container.grid_rowconfigure(0, weight=1)
+
+        # === Левая колонка: выбор получателей (теги, группы, темы) ===
+        left_frame = tk.Frame(split_container, bg=self.colors['bg'])
+        # не задаем вес строке, чтобы высота зависела от содержимого (глобальная прокрутка решает переполнение)
+        left_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 8), pady=16)
+        left_frame.grid_columnconfigure(0, weight=1)
+
+        # карточка выбора получателей
+        self.lists_card_sending = self.create_card(left_frame, "📋  Выбор получателей")
+        self.lists_card_sending.grid(row=0, column=0, sticky='nsew')
+        # строим теги/группы/темы внутри карточки
         self.build_sending_lists(self.lists_card_sending)
 
+        # === Правая колонка: подготовка сообщения ===
+        right_frame = tk.Frame(split_container, bg=self.colors['bg'])
+        right_frame.grid(row=0, column=1, sticky='nsew', padx=(8, 0), pady=16)
+        right_frame.grid_columnconfigure(0, weight=1)
+        # строки для текста сообщения и лога растягиваются
+        right_frame.grid_rowconfigure(1, weight=1)
+        right_frame.grid_rowconfigure(5, weight=1)
+
         # --- Шаблоны сообщений ---
-        templates_card = self.create_card(scrollable_frame, "📝  Шаблоны сообщений")
-        templates_card.grid(row=1, column=0, sticky='ew', padx=16, pady=(0, 12))
+        templates_card = self.create_card(right_frame, "📝  Шаблоны сообщений")
+        templates_card.grid(row=0, column=0, sticky='ew', pady=(0, 12))
         self.create_templates_manager(templates_card)
 
         # --- Текст сообщения ---
-        msg_card = self.create_card(scrollable_frame, "✉️  Текст сообщения")
-        msg_card.grid(row=2, column=0, sticky='ew', padx=16, pady=(0, 12))
+        msg_card = self.create_card(right_frame, "✉️  Текст сообщения")
+        msg_card.grid(row=1, column=0, sticky='nsew', pady=(0, 12))
         msg_card.columnconfigure(0, weight=1)
         msg_card.rowconfigure(2, weight=1)
 
@@ -716,16 +737,16 @@ class TelegramSenderApp:
         self.message_text.bind('<KeyRelease>', self.update_char_counter)
 
         # --- Параметры ---
-        params_card = self.create_card(scrollable_frame, "🔧  Параметры")
-        params_card.grid(row=3, column=0, sticky='ew', padx=16, pady=(0, 12))
+        params_card = self.create_card(right_frame, "🔧  Параметры")
+        params_card.grid(row=2, column=0, sticky='ew', pady=(0, 12))
         self.parameters = [{'name_var': tk.StringVar(value=str(i)), 'value_var': tk.StringVar()}
                            for i in range(1, 5)]
         self.param_frame = params_card
         self.build_params_section(self.param_frame)
 
         # --- Вложения ---
-        attachments_card = self.create_card(scrollable_frame, "📎  Вложения")
-        attachments_card.grid(row=4, column=0, sticky='ew', padx=16, pady=(0, 12))
+        attachments_card = self.create_card(right_frame, "📎  Вложения")
+        attachments_card.grid(row=3, column=0, sticky='ew', pady=(0, 12))
         attachments_card.columnconfigure(0, weight=1)
         attachments_card.rowconfigure(1, weight=1)
 
@@ -743,13 +764,13 @@ class TelegramSenderApp:
         self.attachments = []
 
         # --- Кнопка отправки ---
-        self.send_btn = self.create_button(scrollable_frame, "📨  Отправить сообщения", self.prepare_send,
+        self.send_btn = self.create_button(right_frame, "📨  Отправить сообщения", self.prepare_send,
                                            variant='success')
-        self.send_btn.grid(row=5, column=0, padx=16, pady=12, sticky='ew')
+        self.send_btn.grid(row=4, column=0, pady=12, sticky='ew')
 
         # --- Лог отправки ---
-        progress_card = self.create_card(scrollable_frame, "📊  Лог отправки")
-        progress_card.grid(row=6, column=0, sticky='nsew', padx=16, pady=(0, 16))
+        progress_card = self.create_card(right_frame, "📊  Лог отправки")
+        progress_card.grid(row=5, column=0, sticky='nsew', pady=(0, 16))
         progress_card.columnconfigure(0, weight=1)
         progress_card.rowconfigure(0, weight=1)
 
@@ -869,7 +890,7 @@ class TelegramSenderApp:
     # Sending: Builds the tag filter and group/theme selection UI
     def build_sending_lists(self, parent):
         for w in parent.winfo_children(): w.destroy()
-        parent.rowconfigure(1, weight=1)
+        parent.grid_rowconfigure(1, weight=0)
         parent.columnconfigure(0, weight=1)
 
         tags_card = self.create_card(parent, "🏷️  Фильтр по тегам")
@@ -907,7 +928,7 @@ class TelegramSenderApp:
         lists_container = tk.Frame(parent, bg=self.colors['bg'])
         lists_container.grid(row=1, column=0, sticky='nsew', pady=(0, 12))
         lists_container.grid_columnconfigure((0, 1), weight=1)
-        lists_container.grid_rowconfigure(0, weight=1)
+        lists_container.grid_rowconfigure(0, weight=0)
 
         self.groups_card_sending = self.create_card(lists_container, "📁  Выбор групп")
         self.themes_card_sending = self.create_card(lists_container, "🧵  Выбор тем")
@@ -933,7 +954,7 @@ class TelegramSenderApp:
             for widget in card.winfo_children():
                 widget.destroy()
 
-            card.grid_rowconfigure(0, weight=1)
+            card.grid_rowconfigure(0, weight=0)
             card.grid_columnconfigure(0, weight=1)
             container, scrollable_area = self._create_scrollable_area(card)
             container.grid(row=0, column=0, sticky='nsew')
